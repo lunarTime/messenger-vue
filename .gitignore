@@ -1,0 +1,39 @@
+# Node modules
+node_modules/
+/dist
+/tmp
+/out
+
+# IDE files
+.idea/
+.vscode/
+*.suo
+*.ntvsps
+*.njsproj
+*.sln
+*.vssscc
+.history/
+
+# Vite
+.vitepress/dist
+# Vercel
+.vercel/
+# Netlify
+.netlify/
+
+# Cypress
+/cypress/videos/
+/cypress/screenshots/
+
+# Testing
+/coverage/
+
+# Environment files
+.env
+.env.*.local
+.env.local
+
+# Local history
+.npm/_logs/
+.DS_Store
+Thumbs.db
