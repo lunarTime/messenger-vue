@@ -1,27 +1,44 @@
-# Node modules
-node_modules/
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node modules / build artifacts
+node_modules
 /dist
+dist-ssr
 /tmp
 /out
+*.local
 
-# IDE files
-.idea/
-.vscode/
+# Local history
+.npm/_logs/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.history/
+.DS_Store
+Thumbs.db
 *.suo
+*.ntvs*
 *.ntvsps
 *.njsproj
 *.sln
 *.vssscc
-.history/
+*.sw?
 
-# Vite
+# Hosting / docs
 .vitepress/dist
-# Vercel
 .vercel/
-# Netlify
 .netlify/
 
-# Cypress
+# Cypress artifacts
 /cypress/videos/
 /cypress/screenshots/
 
@@ -32,8 +49,3 @@ node_modules/
 .env
 .env.*.local
 .env.local
-
-# Local history
-.npm/_logs/
-.DS_Store
-Thumbs.db
