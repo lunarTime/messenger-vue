@@ -24,14 +24,17 @@
 <template>
     <div class="flex items-center gap-4 p-2 border-b border-gray bg-white">
         <AppButton @click="closeActiveChat">
-            <ArrowLeftIcon class="size-4" />
+            <ArrowLeftIcon class="lg:size-6 size-4" />
         </AppButton>
+
+        <div class="flex-none lg:size-16 size-12 bg-warning rounded-full"></div>
+
         <div class="flex flex-col">
-            <p class="font-medium">
+            <p class="lg:text-2xl text-xl font-medium leading-none">
                 {{ title }}
             </p>
             <p
-                class="text-xs"
+                class="lg:text-lg text-md"
                 :class="{
                     'text-success': isOnline,
                     'text-error': !isOnline
