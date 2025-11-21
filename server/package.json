@@ -1,0 +1,15 @@
+{
+    "name": "messenger-vue-server",
+    "version": "0.0.1",
+    "type": "module",
+    "scripts": {
+        "dev": "nodemon index.js"
+    },
+    "dependencies": {
+        "uuid": "^9.0.0",
+        "ws": "^8.17.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.11"
+    }
+}
