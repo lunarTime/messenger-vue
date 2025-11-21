@@ -2,7 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
     {
-        path: '/chat/',
+        path: '/',
+        name: 'main',
+        component: () => import('@/pages/main/MainPage.vue')
+    },
+    {
+        path: '/chat',
         name: 'chat',
         component: () => import('@/pages/chat/ChatPage.vue')
     }
