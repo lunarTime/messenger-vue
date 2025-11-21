@@ -1,5 +1,60 @@
-# Vue 3 + TypeScript + Vite
+# 💬 Real-Time Messenger (Vue 3 + WebSocket)
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+A minimal, fast and scalable real-time messenger built with **Vue 3**, **TypeScript**, **Pinia**, **Tailwind**, and a lightweight **Node.js WebSocket backend**.
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+---
+
+## 🚀 Features
+
+- ⚡ **Real-time messaging** via native WebSocket  
+- 👤 **Persistent user IDs** stored locally  
+- 💬 **Chat creation on demand**  
+- 📡 **Online/offline user presence**  
+- 📁 **File-based JSON storage** on backend
+- 🧩 **Modular architecture** following SOLID principles  
+- 🎨 **Modern UI** using Tailwind
+- 🔧 **Scalable structure** ready for growth
+---
+
+## 🖥️ Development stack
+
+### **Frontend**
+- Vue 3 (Composition API)
+- TypeScript
+- Pinia
+- Tailwind
+- Vite
+
+### **Backend**
+- Node.js (nodemon)
+- WebSocket server (ws)
+- JSON-based persistence
+---
+
+## 🛠️ Development setup
+
+###  Install dependencies on Client and Server folders
+```bash
+npm install
+
+npm run dev
+
+```
+
+##
+
+The WebSocket server runs on:
+ws://localhost:8080
+
+The frontend runs on:
+http://localhost:5173
+
+## 💬 How to start chatting
+
+After installing dependencies and running both the client and the server:
+
+- Open two different browsers or incognito mode to simulate two users.
+
+- Go to the chat page and enter the user ID of the person you want to talk to in the search field.
+
+- Send the first message - the chat will be created automatically, and both users will start receiving real-time messages.
