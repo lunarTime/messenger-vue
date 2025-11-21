@@ -3,19 +3,21 @@
 </script>
 
 <template>
-    <transition
-        name="fade"
-        mode="out-in"
-        appear
-    >
-        <RouterView />
-    </transition>
+    <RouterView v-slot="{ Component }">
+        <transition
+            name="fade"
+            mode="out-in"
+            appear
+        >
+            <component :is="Component" />
+        </transition>
+    </RouterView>
 </template>
 
 <style scoped>
     .fade-enter-active,
     .fade-leave-active {
-        @apply transition-opacity duration-1000;
+        @apply transition-opacity duration-400;
     }
 
     .fade-enter-from,
