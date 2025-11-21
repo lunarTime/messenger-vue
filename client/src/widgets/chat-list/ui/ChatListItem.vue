@@ -1,4 +1,5 @@
 <script setup lang="ts">
+    import { computed } from 'vue'
     import { useTimeAgo } from '@/shared/composables/useTimeAgo'
 
     const props = defineProps<{
@@ -9,6 +10,12 @@
     }>()
 
     const timeAgoValue = useTimeAgo(props.date)
+
+    const truncatedMessage = computed(() => {
+        const text = props.lastMessage
+
+        return text.length > 25 ? text.slice(0, 25) + '…' : text
+    })
 </script>
 
 <template>
@@ -29,8 +36,9 @@
                 <span
                     class="block lg:text-lg text-xs group-hover:text-white transition-colors leading-none"
                     :class="active ? 'text-white' : 'text-dark'"
+                    :title="lastMessage"
                 >
-                    {{ lastMessage }}
+                    {{ truncatedMessage }}
                 </span>
             </div>
             <div
