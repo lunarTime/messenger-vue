@@ -20,6 +20,6 @@ body {
 }
 
 .main-button {
-    @apply flex justify-center max-w-max min-w-min w-fit items-center p-1.5 bg-accent text-white border
+    @apply flex justify-center items-center max-w-44 min-w-max w-fit text-center text-xl py-2 px-4 bg-accent text-white border
     border-accent rounded-button leading-none cursor-pointer hover:text-accent hover:bg-white transition-colors;
 }
