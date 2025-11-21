@@ -48,13 +48,13 @@
 </script>
 
 <template>
-    <div class="flex flex-col lg:min-w-120 min-w-100 h-full border-r border-gray">
+    <div class="flex flex-col lg:min-w-120 min-w-max h-full border-r border-gray">
         <div class="p-4 space-y-3 border-b border-gray">
             <div class="flex flex-col gap-1">
-                <p class="mb-1 text-xl text-dark font-bold uppercase">Your ID</p>
+                <p class="mb-1 lg:text-xl text-base text-dark font-bold uppercase">Your ID</p>
 
                 <div class="flex gap-2">
-                    <span class="flex items-center px-2 py-1 w-fit font-mono text-2xl bg-lightgray rounded">
+                    <span class="flex items-center px-2 py-1 w-fit font-mono lg:text-2xl text-lg bg-lightgray rounded">
                         {{ userStore.userId }}
                     </span>
 
@@ -73,7 +73,7 @@
                     v-model="search"
                     type="text"
                     placeholder="Enter user ID"
-                    class="w-full px-3 py-2 text-xl rounded border border-gray"
+                    class="w-full px-3 py-2 lg:text-xl text-base rounded border border-gray"
                     @keydown.enter.prevent="onSearch"
                 />
 
@@ -82,7 +82,7 @@
 
             <p
                 v-if="error"
-                class="text-xl text-error"
+                class="lg:text-xl text-sm text-error"
             >
                 Error: {{ error }}
             </p>

@@ -43,7 +43,7 @@
             </div>
             <div
                 v-if="timeAgoValue"
-                class="flex items-center lg:text-xs text-[0.7rem] min-w-max"
+                class="flex items-center min-w-max lg:text-xs text-[0.7rem] group-hover:text-white transition-colors"
                 :class="active ? 'text-white' : 'text-dark'"
             >
                 {{ timeAgoValue }}

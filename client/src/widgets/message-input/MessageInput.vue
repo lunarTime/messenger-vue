@@ -21,7 +21,7 @@
         <textarea
             v-model="text"
             type="text"
-            class="flex-1 px-3 py-1 border border-gray rounded"
+            class="flex-1 px-3 py-1 lg:text-xl text-base border border-gray rounded"
             placeholder="Type message..."
             @keydown.enter.prevent="send"
         />
