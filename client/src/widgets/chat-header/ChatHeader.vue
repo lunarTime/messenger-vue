@@ -34,7 +34,7 @@
                 {{ title }}
             </p>
             <p
-                class="lg:text-lg text-md"
+                class="lg:text-lg text-base"
                 :class="{
                     'text-success': isOnline,
                     'text-error': !isOnline

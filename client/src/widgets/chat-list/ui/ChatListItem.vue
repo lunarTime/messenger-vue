@@ -28,7 +28,7 @@
         <div class="flex justify-between gap-x-4 flex-1">
             <div class="flex flex-col gap-2 w-[-webkit-fill-available]">
                 <span
-                    class="block lg:text-xl text-md font-medium group-hover:text-white transition-colors leading-none"
+                    class="block lg:text-xl text-base font-medium group-hover:text-white transition-colors leading-none"
                     :class="active ? 'text-white' : 'text-dark'"
                 >
                     {{ name }}

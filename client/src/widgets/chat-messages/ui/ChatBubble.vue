@@ -44,7 +44,7 @@
                         {{ createdDateDisplay }}
                     </div>
                 </div>
-                <div class="lg:text-lg text-md break-all">
+                <div class="lg:text-lg text-base break-all">
                     {{ text }}
                 </div>
             </div>
@@ -59,7 +59,7 @@
                     {{ createdDateDisplay }}
                 </div>
                 <span
-                    class="lg:text-lg text-md italic"
+                    class="lg:text-lg text-base italic"
                     :class="whiteDarkColorClass"
                 >
                     Message deleted
