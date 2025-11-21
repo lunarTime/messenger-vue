@@ -29,6 +29,7 @@
             v-for="m in store.messages"
             :key="m.id"
             :text="m.text"
+            :created-ad="m.createdAt"
             :variant="m.userId === userId ? 'outgoing' : 'incoming'"
         />
     </div>
