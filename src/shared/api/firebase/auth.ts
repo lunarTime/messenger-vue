@@ -48,8 +48,8 @@ export async function loginWithGoogle() {
     const result = await signInWithPopup(auth, googleProvider)
     const user = result.user
     const userDoc = doc(db, 'users', user.uid)
-    const nameParts = (user.displayName || 'Unknown User').split(' ')
-    const firstName = nameParts[0] || 'Unknown'
+    const nameParts = (user.displayName || 'Неизвестный пользователь').split(' ')
+    const firstName = nameParts[0] || 'Неизвестно'
     const lastName = nameParts.slice(1).join(' ') || ''
 
     await setDoc(
@@ -72,6 +72,18 @@ export async function loginWithGoogle() {
 }
 
 export async function signOut() {
+    const currentUser = auth.currentUser
+
+    if (currentUser) {
+        try {
+            const { setUserOnlineStatus } = await import('@/shared/api/firebase/firestore')
+
+            await setUserOnlineStatus(currentUser.uid, false)
+        } catch (error) {
+            console.error('Ошибка при установке offline-статуса:', error)
+        }
+    }
+
     await firebaseSignOut(auth)
 }
 
