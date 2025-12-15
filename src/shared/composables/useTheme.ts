@@ -31,7 +31,7 @@ const initialTheme = getInitialTheme()
 applyThemeSync(initialTheme)
 
 const isDark = ref(initialTheme)
-const bgColor = computed(() => (isDark.value ? 'bg-[#09090b]' : 'bg-white'))
+const bgColor = computed(() => (isDark.value ? 'bg-[#18181b]' : 'bg-white'))
 const textColor = '#a1a1aa'
 
 export function useTheme() {
