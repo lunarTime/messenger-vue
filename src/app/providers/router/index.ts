@@ -1,63 +1,19 @@
-import { watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '@/entities/user/store/user.store'
+import type { App } from 'vue'
+import { routes } from '@/app/providers/router/routes'
+import { setupRouterGuards } from '@/app/providers/router/guards'
 
-const router = createRouter({
-    history: createWebHistory(import.meta.env.BASE_URL),
-    routes: [
-        {
-            path: '/',
-            name: 'main',
-            component: () => import('@/pages/main/MainPage.vue'),
-            meta: { requiresAuth: false }
-        },
-        {
-            path: '/auth',
-            name: 'auth',
-            component: () => import('@/pages/auth/AuthPage.vue'),
-            meta: { requiresAuth: false, redirectIfAuth: true }
-        },
-        {
-            path: '/chat',
-            name: 'chat',
-            component: () => import('@/pages/chat/ChatPage.vue'),
-            meta: { requiresAuth: true }
-        },
-        {
-            path: '/:pathMatch(.*)*',
-            redirect: '/'
-        }
-    ]
-})
+export function setupRouter(app: App) {
+    const router = createRouter({
+        history: createWebHistory(import.meta.env.BASE_URL),
+        routes
+    })
 
-router.beforeEach(async (to, from, next) => {
-    const userStore = useUserStore()
+    setupRouterGuards(router)
 
-    if (userStore.isLoading) {
-        await new Promise<void>(resolve => {
-            const unwatch = watch(
-                () => userStore.isLoading,
-                loading => {
-                    if (!loading) {
-                        unwatch()
-                        resolve()
-                    }
-                }
-            )
-        })
-    }
+    app.use(router)
 
-    const requiresAuth = to.meta.requiresAuth
-    const redirectIfAuth = to.meta.redirectIfAuth
-    const isAuthenticated = userStore.isAuthenticated
+    return router
+}
 
-    if (requiresAuth && !isAuthenticated) {
-        next({ name: 'auth', query: { redirect: to.fullPath } })
-    } else if (redirectIfAuth && isAuthenticated) {
-        next({ name: 'chat' })
-    } else {
-        next()
-    }
-})
-
-export default router
+export { routes }
