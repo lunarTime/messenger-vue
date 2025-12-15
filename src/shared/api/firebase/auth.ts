@@ -3,90 +3,136 @@ import {
     signInWithEmailAndPassword,
     signInWithPopup,
     GoogleAuthProvider,
-    signOut as firebaseSignOut,
-    onAuthStateChanged,
-    updateProfile,
-    type User as FirebaseUser
+    signOut,
+    updateProfile
 } from 'firebase/auth'
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { auth, db } from '@/app/providers/firebase'
 import type { RegisterFormData } from '@/shared/types/auth'
 
-const googleProvider = new GoogleAuthProvider()
+let isRegistering = false
 
-export async function registerWithEmail(data: RegisterFormData) {
-    const { email, password, firstName, lastName } = data
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-    const user = userCredential.user
+export function getIsRegistering() {
+    return isRegistering
+}
 
-    await updateProfile(user, {
-        displayName: `${firstName} ${lastName}`
-    })
+export async function registerWithEmail(formData: RegisterFormData) {
+    const { email, password, firstName, lastName } = formData
 
-    await setDoc(doc(db, 'users', user.uid), {
-        id: user.uid,
-        email: user.email,
-        firstName,
-        lastName,
-        displayName: `${firstName} ${lastName}`,
-        photoURL: null,
-        isOnline: true,
-        lastSeen: serverTimestamp(),
-        createdAt: serverTimestamp()
-    })
+    try {
+        isRegistering = true
 
-    return user
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+        const user = userCredential.user
+        const displayName = lastName ? `${firstName} ${lastName}` : firstName
+
+        await updateProfile(user, { displayName })
+
+        const userDocRef = doc(db, 'users', user.uid)
+        const userData = {
+            id: user.uid,
+            email: user.email,
+            displayName,
+            firstName,
+            lastName: lastName || '',
+            photoURL: user.photoURL || null,
+            isOnline: true,
+            createdAt: serverTimestamp(),
+            lastSeen: serverTimestamp()
+        }
+
+        await setDoc(userDocRef, userData)
+
+        const verifyDoc = await getDoc(userDocRef)
+
+        if (!verifyDoc.exists()) {
+            throw new Error('Документ не был создан в Firestore')
+        }
+
+        isRegistering = false
+
+        return user
+    } catch (error) {
+        isRegistering = false
+
+        console.error('Ошибка регистрации:', error)
+
+        throw error
+    }
 }
 
 export async function loginWithEmail(email: string, password: string) {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password)
+    try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password)
+        const user = userCredential.user
 
-    return userCredential.user
-}
-
-export async function loginWithGoogle() {
-    const result = await signInWithPopup(auth, googleProvider)
-    const user = result.user
-    const userDoc = doc(db, 'users', user.uid)
-    const nameParts = (user.displayName || 'Неизвестный пользователь').split(' ')
-    const firstName = nameParts[0] || 'Неизвестно'
-    const lastName = nameParts.slice(1).join(' ') || ''
-
-    await setDoc(
-        userDoc,
-        {
-            id: user.uid,
-            email: user.email,
-            firstName,
-            lastName,
-            displayName: user.displayName || `${firstName} ${lastName}`,
-            photoURL: user.photoURL,
+        await updateDoc(doc(db, 'users', user.uid), {
             isOnline: true,
-            lastSeen: serverTimestamp(),
-            createdAt: serverTimestamp()
-        },
-        { merge: true }
-    )
+            lastSeen: serverTimestamp()
+        })
 
-    return user
-}
+        return user
+    } catch (error) {
+        console.error('Ошибка входа:', error)
 
-export async function signOut() {
-    const currentUser = auth.currentUser
-
-    if (currentUser) {
-        try {
-            const { setUserOnlineStatus } = await import('@/shared/api/firebase/firestore')
-
-            await setUserOnlineStatus(currentUser.uid, false)
-        } catch (error) {
-            console.error('Ошибка при установке offline-статуса:', error)
-        }
+        throw error
     }
-
-    await firebaseSignOut(auth)
 }
 
-export function onAuthStateChange(callback: (user: FirebaseUser | null) => void) {
-    return onAuthStateChanged(auth, callback)
+export async function signInWithGoogle() {
+    try {
+        const provider = new GoogleAuthProvider()
+        const userCredential = await signInWithPopup(auth, provider)
+        const user = userCredential.user
+        const userDocRef = doc(db, 'users', user.uid)
+        const userDoc = await getDoc(userDocRef)
+
+        if (!userDoc.exists()) {
+            const nameParts = user.displayName?.split(' ') || []
+            const firstName = nameParts[0] || ''
+            const lastName = nameParts.slice(1).join(' ') || ''
+
+            await setDoc(userDocRef, {
+                id: user.uid,
+                email: user.email,
+                displayName: user.displayName || '',
+                firstName,
+                lastName,
+                photoURL: user.photoURL || null,
+                isOnline: true,
+                createdAt: serverTimestamp(),
+                lastSeen: serverTimestamp()
+            })
+        } else {
+            await updateDoc(userDocRef, {
+                isOnline: true,
+                lastSeen: serverTimestamp()
+            })
+        }
+
+        return user
+    } catch (error) {
+        console.error('Ошибка Google входа:', error)
+
+        throw error
+    }
+}
+
+export async function logout() {
+    try {
+        const user = auth.currentUser
+
+        if (user) {
+            await updateDoc(doc(db, 'users', user.uid), {
+                isOnline: false,
+                lastSeen: serverTimestamp()
+            })
+        }
+
+        await signOut(auth)
+    } catch (error) {
+        console.error('Ошибка выхода:', error)
+
+        throw error
+    }
 }
