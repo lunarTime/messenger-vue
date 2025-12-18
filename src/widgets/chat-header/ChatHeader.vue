@@ -1,47 +1,92 @@
 <script setup lang="ts">
-    import { computed } from 'vue'
+    import { computed, ref, onUnmounted, watch } from 'vue'
     import { useChatStore } from '@/entities/chat/store/chat.store'
-    import { ArrowLeftIcon } from '@heroicons/vue/24/outline'
-    import AppButton from '@/widgets/ui/AppButton.vue'
+    import { subscribeToUser } from '@/shared/api/firebase/firestore'
+    import type { User } from '@/shared/types/user'
+    import Avatar from 'primevue/avatar'
 
     const chatStore = useChatStore()
 
-    const title = computed(() => {
+    let unsubscribeUser: (() => void) | null = null
+    const otherUser = ref<User | null>(null)
+
+    const chatName = computed(() => {
         const chat = chatStore.activeChat
 
         if (!chat) {
-            return 'Select chat'
+            return ''
         }
 
         return chatStore.otherUserName(chat)
     })
 
-    const isOnline = computed(() => chatStore.onlineUsers.includes(title.value))
+    const isOnline = computed(() => otherUser.value?.isOnline ?? false)
 
-    const closeActiveChat = () => chatStore.closeActiveChat()
+    const otherUserId = computed(() => {
+        const chat = chatStore.activeChat
+
+        if (!chat || chat.type !== 'direct') {
+            return null
+        }
+
+        return chatStore.getOtherUser(chat)?.id || null
+    })
+
+    const setupUserSubscription = () => {
+        if (unsubscribeUser) {
+            unsubscribeUser()
+            unsubscribeUser = null
+        }
+
+        if (otherUserId.value) {
+            unsubscribeUser = subscribeToUser(otherUserId.value, user => {
+                otherUser.value = user
+            })
+        }
+    }
+
+    watch(
+        otherUserId,
+        () => {
+            setupUserSubscription()
+        },
+        {
+            immediate: true
+        }
+    )
+
+    onUnmounted(() => {
+        unsubscribeUser?.()
+        unsubscribeUser = null
+    })
 </script>
 
 <template>
-    <div class="flex items-center gap-4 p-2 border-b border-gray bg-white">
-        <AppButton @click="closeActiveChat">
-            <ArrowLeftIcon class="lg:size-6 size-4" />
-        </AppButton>
+    <div class="sticky top-0 z-10 flex items-center justify-between p-4">
+        <div class="flex items-center gap-3">
+            <div class="relative">
+                <Avatar
+                    :image="otherUser?.photoURL ?? undefined"
+                    :label="otherUser?.photoURL ? undefined : chatName.charAt(0).toUpperCase()"
+                    :class="otherUser?.photoURL ? undefined : 'bg-(--p-primary-color)! text-white!'"
+                    shape="circle"
+                    size="large"
+                />
+                <div
+                    v-if="isOnline"
+                    class="absolute top-0 right-0 w-3 h-3 bg-green-500 border rounded-full"
+                    title="Онлайн"
+                />
+            </div>
 
-        <div class="flex-none lg:size-16 size-12 bg-warning rounded-full"></div>
-
-        <div class="flex flex-col">
-            <p class="lg:text-2xl text-xl font-medium leading-none">
-                {{ title }}
-            </p>
-            <p
-                class="lg:text-lg text-base"
-                :class="{
-                    'text-success': isOnline,
-                    'text-error': !isOnline
-                }"
-            >
-                {{ isOnline ? 'online' : 'offline' }}
-            </p>
+            <div>
+                <h2 class="text-lg font-semibold">
+                    {{ chatName }}
+                </h2>
+                <p class="text-sm">
+                    {{ isOnline ? 'онлайн' : 'не в сети' }}
+                </p>
+            </div>
         </div>
     </div>
 </template>
