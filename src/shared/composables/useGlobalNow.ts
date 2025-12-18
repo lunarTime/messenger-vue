@@ -1,16 +1,29 @@
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
-const now = ref(Date.now())
-let started = false
+const globalNow = ref(Date.now())
+let intervalId: ReturnType<typeof setInterval> | null = null
+let subscriberCount = 0
 
-export function useGlobalNow(interval = 3000) {
-    if (!started) {
-        started = true
+export function useGlobalNow(interval = 10000) {
+    onMounted(() => {
+        subscriberCount++
 
-        setInterval(() => {
-            now.value = Date.now()
-        }, interval)
-    }
+        if (subscriberCount === 1 && intervalId === null) {
+            intervalId = window.setInterval(() => {
+                globalNow.value = Date.now()
+            }, interval)
+        }
+    })
 
-    return now
+    onUnmounted(() => {
+        subscriberCount--
+
+        if (subscriberCount === 0 && intervalId !== null) {
+            clearInterval(intervalId)
+
+            intervalId = null
+        }
+    })
+
+    return globalNow
 }
