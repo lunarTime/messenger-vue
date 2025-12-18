@@ -2,7 +2,8 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth'
 import { auth } from '@/app/providers/firebase'
-import { getUserById, setUserOnlineStatus, searchUsers } from '@/shared/api/firebase/firestore'
+import { getUserById, searchUsers, setUserOnlineStatus } from '@/shared/api/firebase/firestore'
+import { getIsRegistering } from '@/shared/api/firebase/auth'
 import type { User } from '@/shared/types/user'
 
 export const useUserStore = defineStore('user', () => {
@@ -16,10 +17,22 @@ export const useUserStore = defineStore('user', () => {
     const isAuthenticated = computed(() => !!currentUser.value)
 
     const initAuth = () => {
+        isLoading.value = true
+
         return onAuthStateChanged(auth, async user => {
             firebaseUser.value = user
 
             if (user) {
+                if (getIsRegistering()) {
+                    let attempts = 0
+
+                    while (getIsRegistering() && attempts < 50) {
+                        await new Promise(resolve => setTimeout(resolve, 100))
+
+                        attempts++
+                    }
+                }
+
                 try {
                     const userData = await getUserById(user.uid)
 
@@ -29,8 +42,6 @@ export const useUserStore = defineStore('user', () => {
                         await setUserOnlineStatus(user.uid, true)
                     }
                 } catch (error) {
-                    console.error('Ошибка загрузки данных пользователя:', error)
-
                     currentUser.value = null
                 }
             } else {
@@ -59,8 +70,6 @@ export const useUserStore = defineStore('user', () => {
                 searchResults.value = results
             }
         } catch (error) {
-            console.error('Ошибка при поиске пользователей:', error)
-
             searchResults.value = []
         } finally {
             isSearching.value = false
@@ -73,7 +82,11 @@ export const useUserStore = defineStore('user', () => {
 
     const setOfflineStatus = async () => {
         if (userId.value) {
-            await setUserOnlineStatus(userId.value, false)
+            try {
+                await setUserOnlineStatus(userId.value, false)
+            } catch (error) {
+                console.error('Ошибка установки офлайн статуса:', error)
+            }
         }
     }
 
