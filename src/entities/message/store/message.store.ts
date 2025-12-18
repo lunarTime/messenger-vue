@@ -1,10 +1,15 @@
 import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import type { Unsubscribe } from 'firebase/firestore'
 import { useChatStore } from '@/entities/chat/store/chat.store'
 import { useUserStore } from '@/entities/user/store/user.store'
-import { subscribeToChatMessages, sendMessage as sendFirebaseMessage } from '@/shared/api/firebase/firestore'
-import type { Message } from '@/shared/types/message'
+import {
+    subscribeToChatMessages,
+    sendMessage as sendFirebaseMessage,
+    subscribeToMessageDeliveryStatus,
+    getOrCreateDirectChat
+} from '@/shared/api/firebase/firestore'
+import type { Message, MessageStatus } from '@/shared/types/message'
+import type { Unsubscribe } from 'firebase/firestore'
 
 export const useMessageStore = defineStore('messages', () => {
     const chatStore = useChatStore()
@@ -13,6 +18,8 @@ export const useMessageStore = defineStore('messages', () => {
     const messages = ref<Message[]>([])
     const isLoading = ref(false)
     const unsubscribeMessages = ref<Unsubscribe | null>(null)
+    const messageStatuses = ref<Map<string, MessageStatus>>(new Map())
+    const statusUnsubscribers = ref<Map<string, Unsubscribe>>(new Map())
 
     watch(
         () => chatStore.activeChatId,
@@ -22,45 +29,94 @@ export const useMessageStore = defineStore('messages', () => {
                 unsubscribeMessages.value = null
             }
 
+            statusUnsubscribers.value.forEach(unsub => unsub())
+            statusUnsubscribers.value.clear()
+            messageStatuses.value.clear()
             messages.value = []
 
-            if (newChatId) {
+            if (newChatId && !newChatId.startsWith('temp_')) {
                 loadMessages(newChatId)
             }
         }
     )
 
     const loadMessages = (chatId: string) => {
+        if (!chatId || chatId.startsWith('temp_')) {
+            return
+        }
+
         if (unsubscribeMessages.value) {
             unsubscribeMessages.value()
         }
 
+        statusUnsubscribers.value.forEach(unsub => unsub())
+        statusUnsubscribers.value.clear()
+        messageStatuses.value.clear()
         isLoading.value = true
 
-        unsubscribeMessages.value = subscribeToChatMessages(chatId, loadedMessages => {
-            messages.value = loadedMessages
-            isLoading.value = false
-        })
+        unsubscribeMessages.value = subscribeToChatMessages(
+            chatId,
+            loadedMessages => {
+                messages.value = loadedMessages
+                isLoading.value = false
+
+                loadedMessages.forEach(msg => {
+                    if (msg.senderId === userStore.userId) {
+                        const chatMembers =
+                            chatStore.activeChat?.participants.filter(id => id !== userStore.userId) || []
+
+                        if (chatMembers.length > 0) {
+                            const otherUserId = chatMembers[0]
+
+                            if (!statusUnsubscribers.value.has(msg.id)) {
+                                const unsub = subscribeToMessageDeliveryStatus(msg.id, chatId, otherUserId, status => {
+                                    if (status) {
+                                        messageStatuses.value.set(msg.id, status)
+                                    }
+                                })
+
+                                statusUnsubscribers.value.set(msg.id, unsub)
+                            }
+                        }
+                    }
+                })
+            },
+            userStore.userId || undefined
+        )
     }
 
-    const sendMessage = async (text: string) => {
+    const sendMessage = async (text: string): Promise<void> => {
         const chat = chatStore.activeChat
         const myId = userStore.userId
 
         if (!chat || !myId) {
-            console.error('Невозможно начать чат: нет активного чата или пользователь не авторизован')
-
-            return
+            throw new Error('Невозможно отправить сообщение: нет активного чата или пользователь не авторизован')
         }
 
-        if (!text.trim()) {
+        if (!text?.trim()) {
             return
         }
 
         try {
-            await sendFirebaseMessage(chat.id, myId, text.trim())
+            let actualChatId = chat.id
+
+            if (chatStore.temporaryChat && chat.id === chatStore.temporaryChat.id) {
+                const otherUserId = chat.participants.find(id => id !== myId)
+
+                if (!otherUserId) {
+                    throw new Error('Не найден получатель сообщения')
+                }
+
+                actualChatId = await getOrCreateDirectChat(myId, otherUserId)
+
+                chatStore.temporaryChat = null
+                chatStore.selectChat(actualChatId)
+            }
+
+            await sendFirebaseMessage(actualChatId, myId, text.trim())
         } catch (error) {
             console.error('Ошибка отправки сообщения:', error)
+            throw error
         }
     }
 
@@ -70,12 +126,16 @@ export const useMessageStore = defineStore('messages', () => {
             unsubscribeMessages.value = null
         }
 
+        statusUnsubscribers.value.forEach(unsub => unsub())
+        statusUnsubscribers.value.clear()
+        messageStatuses.value.clear()
         messages.value = []
     }
 
     return {
         messages,
         isLoading,
+        messageStatuses,
         sendMessage,
         cleanup
     }
