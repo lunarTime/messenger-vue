@@ -1,3 +1,4 @@
+export type AuthType = 'login' | 'register'
 export interface LoginFormData {
     email: string
     password: string
