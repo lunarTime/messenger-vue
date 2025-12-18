@@ -1,28 +1,40 @@
-export function formatTimeAgo(input: string | number | Date, nowValue: number = Date.now()): string {
-    const date = input instanceof Date ? input : new Date(input)
-
+export function formatTimeAgo(date: Date, now: number = Date.now()): string {
     if (isNaN(date.getTime())) {
         return ''
     }
 
-    const diff = (nowValue - date.getTime()) / 1000
+    const diff = now - date.getTime()
+    const seconds = Math.floor(diff / 1000)
+    const minutes = Math.floor(seconds / 60)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+    const weeks = Math.floor(days / 7)
+    const months = Math.floor(days / 30)
+    const years = Math.floor(days / 365)
 
-    const ranges = [
-        { limit: 60, divisor: 1, unit: 'second' },
-        { limit: 3600, divisor: 60, unit: 'minute' },
-        { limit: 86400, divisor: 3600, unit: 'hour' },
-        { limit: 2592000, divisor: 86400, unit: 'day' },
-        { limit: 31536000, divisor: 2592000, unit: 'month' },
-        { limit: Infinity, divisor: 31536000, unit: 'year' }
-    ]
-
-    for (const r of ranges) {
-        if (diff < r.limit) {
-            const value = Math.floor(diff / r.divisor)
-
-            return `${value} ${r.unit}${value !== 1 ? 's' : ''} ago`
-        }
+    if (seconds < 60) {
+        return 'сейчас'
     }
 
-    return ''
+    if (minutes < 60) {
+        return `${minutes} м.`
+    }
+
+    if (hours < 24) {
+        return `${hours} ч.`
+    }
+
+    if (days < 7) {
+        return `${days} д.`
+    }
+
+    if (weeks < 4) {
+        return `${weeks} нед.`
+    }
+
+    if (months < 12) {
+        return `${months} мес.`
+    }
+
+    return `${years} г.`
 }
