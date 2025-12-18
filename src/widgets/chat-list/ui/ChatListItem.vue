@@ -1,52 +1,125 @@
 <script setup lang="ts">
-    import { computed } from 'vue'
+    import { computed, ref, watch, onUnmounted } from 'vue'
+    import { useChatStore } from '@/entities/chat/store/chat.store'
+    import { useUserStore } from '@/entities/user/store/user.store'
     import { useTimeAgo } from '@/shared/composables/useTimeAgo'
+    import { subscribeToTyping } from '@/shared/api/firebase/firestore'
+    import type { Timestamp } from 'firebase/firestore'
+    import Avatar from 'primevue/avatar'
+    import Badge from 'primevue/badge'
 
     const props = defineProps<{
+        chatId: string
+        otherUserId: string
         name: string
-        lastMessage: string
+        lastMessage?: {
+            text: string
+            senderId: string
+            createdAt: Timestamp
+        }
+        date?: Timestamp
         active?: boolean
-        date: string | number | Date
+        unreadCount?: number
     }>()
 
-    const timeAgoValue = useTimeAgo(props.date)
+    const chatStore = useChatStore()
+    const userStore = useUserStore()
 
-    const truncatedMessage = computed(() => {
-        const text = props.lastMessage
+    let unsubscribeTyping: (() => void) | null = null
+    const typingUsers = ref<string[]>([])
 
-        return text.length > 25 ? text.slice(0, 25) + '…' : text
+    const otherUser = computed(() => {
+        return chatStore.chatParticipants.get(props.otherUserId) || null
+    })
+    const isOnline = computed(() => otherUser.value?.isOnline ?? false)
+    const isTyping = computed(() => typingUsers.value.includes(props.otherUserId))
+    const displayDate = useTimeAgo(props.date ?? null)
+    const displayMessage = computed(() => {
+        if (isTyping.value) {
+            return 'печатает...'
+        }
+
+        if (props.lastMessage?.text) {
+            const { text } = props.lastMessage
+
+            return text.length <= 25 ? text : text.slice(0, 25) + '...'
+        }
+
+        return 'Нет сообщений'
+    })
+
+    watch(
+        () => props.chatId,
+        chatId => {
+            unsubscribeTyping?.()
+            unsubscribeTyping = null
+
+            if (!chatId) {
+                return
+            }
+
+            unsubscribeTyping = subscribeToTyping(chatId, users => {
+                typingUsers.value = users.filter(id => id !== userStore.userId)
+            })
+        },
+        {
+            immediate: true
+        }
+    )
+
+    onUnmounted(() => {
+        unsubscribeTyping?.()
     })
 </script>
 
 <template>
     <div
-        class="group flex items-center gap-3 px-4 py-3 hover:bg-accent cursor-pointer transition-colors select-none"
-        :class="active ? 'bg-accent' : ''"
+        v-ripple
+        class="relative flex items-center gap-3 p-4 cursor-pointer transition-colors duration-200 hover:bg-(--p-primary-color)/20"
+        :class="{ 'bg-(--p-primary-color)/30': active }"
     >
-        <div class="flex-none lg:size-16 size-12 rounded-full bg-warning"></div>
+        <div class="relative shrink-0">
+            <Avatar
+                :image="otherUser?.photoURL ?? undefined"
+                :label="otherUser?.photoURL ? undefined : name.charAt(0).toUpperCase()"
+                :class="otherUser?.photoURL ? undefined : 'bg-(--p-primary-color)! text-white!'"
+                shape="circle"
+                size="large"
+            />
+            <div
+                v-if="isOnline"
+                class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full"
+                title="Онлайн"
+            />
+        </div>
 
-        <div class="flex justify-between gap-x-4 flex-1">
-            <div class="flex flex-col gap-2 w-[-webkit-fill-available]">
-                <span
-                    class="block lg:text-xl text-base font-medium group-hover:text-white transition-colors leading-none"
-                    :class="active ? 'text-white' : 'text-dark'"
-                >
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between mb-1">
+                <h3 class="font-semibold truncate">
                     {{ name }}
-                </span>
+                </h3>
                 <span
-                    class="block lg:text-lg text-xs group-hover:text-white transition-colors leading-none"
-                    :class="active ? 'text-white' : 'text-dark'"
-                    :title="lastMessage"
+                    v-if="displayDate"
+                    class="text-xs shrink-0 ml-2"
                 >
-                    {{ truncatedMessage }}
+                    {{ displayDate }}
                 </span>
             </div>
-            <div
-                v-if="timeAgoValue"
-                class="flex items-center min-w-max lg:text-xs text-[0.7rem] group-hover:text-white transition-colors"
-                :class="active ? 'text-white' : 'text-dark'"
-            >
-                {{ timeAgoValue }}
+
+            <div class="flex items-center justify-between gap-2">
+                <p
+                    class="text-sm truncate"
+                    :class="isTyping ? 'italic' : ''"
+                >
+                    {{ displayMessage }}
+                </p>
+
+                <Badge
+                    v-if="unreadCount && unreadCount > 0"
+                    :value="unreadCount"
+                    severity="contrast"
+                    size="small"
+                />
             </div>
         </div>
     </div>
