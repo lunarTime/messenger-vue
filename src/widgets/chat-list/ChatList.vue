@@ -1,103 +1,59 @@
 <script setup lang="ts">
-    import { ref } from 'vue'
+    import { computed } from 'vue'
     import { useChatStore } from '@/entities/chat/store/chat.store'
     import { useUserStore } from '@/entities/user/store/user.store'
+    import { useUnreadCounts } from '@/shared/composables/useUnreadCounts'
+    import type { Chat } from '@/shared/types/chat'
     import ChatListItem from '@/widgets/chat-list/ui/ChatListItem.vue'
-    import AppButton from '@/widgets/ui/AppButton.vue'
+    import UserSearch from '@/widgets/chat-list/ui/ChatSearch.vue'
+    import CurrentUser from '@/widgets/ui/CurrentUser.vue'
+    import ScrollPanel from 'primevue/scrollpanel'
 
     const chatStore = useChatStore()
     const userStore = useUserStore()
 
-    const search = ref('')
-    const error = ref('')
-    const copyText = ref('Copy')
-    const isOpen = ref(false)
-    const isCopyDisabled = ref(false)
+    const { unreadCounts } = useUnreadCounts(
+        computed(() => chatStore.visibleChats),
+        computed(() => userStore.userId)
+    )
 
-    const onSearch = () => {
-        const id = search.value.trim()
-
-        if (id.length < 12) {
-            error.value = 'ID must be 12 characters'
-
-            return
+    const getOtherUserId = (chat: Chat): string => {
+        if (!userStore.userId) {
+            return ''
         }
 
-        if (id === userStore.userId) {
-            error.value = 'Cannot chat with yourself'
-
-            return
-        }
-
-        error.value = ''
-        chatStore.openChatWith(id)
-        search.value = ''
-        isOpen.value = false
-    }
-
-    const copyId = () => {
-        window.navigator.clipboard.writeText(userStore.userId)
-        copyText.value = 'Copied!'
-        isCopyDisabled.value = true
-
-        setTimeout(() => {
-            copyText.value = 'Copy'
-            isCopyDisabled.value = false
-        }, 1000)
+        return chat.participants.find(id => id !== userStore.userId) || ''
     }
 </script>
 
 <template>
-    <div class="flex flex-col lg:min-w-120 min-w-max h-full border-r border-gray">
-        <div class="p-4 space-y-3 border-b border-gray">
-            <div class="flex flex-col gap-1">
-                <p class="mb-1 lg:text-xl text-base text-dark font-bold uppercase">Your ID</p>
+    <div class="flex flex-col h-full">
+        <UserSearch />
 
-                <div class="flex gap-2">
-                    <span class="flex items-center px-2 py-1 w-fit font-mono lg:text-2xl text-lg bg-lightgray rounded">
-                        {{ userStore.userId }}
-                    </span>
-
-                    <AppButton
-                        @click="copyId"
-                        class="disabled:cursor-default! disabled:opacity-60"
-                        :disabled="isCopyDisabled"
-                    >
-                        {{ copyText }}
-                    </AppButton>
-                </div>
-            </div>
-
-            <div class="flex gap-2 w-fit">
-                <input
-                    v-model="search"
-                    type="text"
-                    placeholder="Enter user ID"
-                    class="w-full px-3 py-2 lg:text-xl text-base rounded border border-gray"
-                    @keydown.enter.prevent="onSearch"
-                />
-
-                <AppButton @click="onSearch"> Start chat </AppButton>
-            </div>
-
-            <p
-                v-if="error"
-                class="lg:text-xl text-sm text-error"
+        <ScrollPanel class="flex-1">
+            <div
+                v-if="chatStore.visibleChats.length === 0"
+                class="p-8 text-center"
             >
-                Error: {{ error }}
-            </p>
-        </div>
+                <i class="pi pi-comments text-4xl mb-4"></i>
+                <p> Нет активных чатов </p>
+                <p class="text-sm mt-2"> Используйте поиск выше, чтобы начать общение </p>
+            </div>
 
-        <div class="flex-1 overflow-y-auto">
             <ChatListItem
                 v-for="chat in chatStore.visibleChats"
                 :key="chat.id"
+                :chat-id="chat.id"
+                :other-user-id="getOtherUserId(chat)"
                 :active="chat.id === chatStore.activeChatId"
                 :name="chatStore.otherUserName(chat)"
-                :lastMessage="chat.lastMessage"
+                :last-message="chat.lastMessage"
                 :date="chat.updatedAt"
+                :unread-count="unreadCounts[chat.id]"
                 @click="chatStore.selectChat(chat.id)"
             />
-        </div>
+        </ScrollPanel>
+
+        <CurrentUser />
     </div>
 </template>
