@@ -1,13 +1,19 @@
-export function formatTime(input: Date | string | number): string {
-    let date: Date
+import type { Timestamp } from 'firebase/firestore'
 
-    if (input instanceof Date) {
-        date = input
-    } else {
-        date = new Date(input)
+export function formatTime(timestamp: Timestamp | Date | number | null | undefined): string {
+    if (!timestamp) {
+        return ''
     }
 
-    if (isNaN(date.getTime())) {
+    let date: Date
+
+    if (timestamp instanceof Date) {
+        date = timestamp
+    } else if (typeof timestamp === 'number') {
+        date = new Date(timestamp)
+    } else if (timestamp && 'toDate' in timestamp) {
+        date = timestamp.toDate()
+    } else {
         return ''
     }
 
