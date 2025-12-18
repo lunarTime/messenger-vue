@@ -1,8 +1,8 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import type { Unsubscribe } from 'firebase/firestore'
 import { useUserStore } from '@/entities/user/store/user.store'
-import { subscribeToUserChats, getOrCreateDirectChat, getUserById } from '@/shared/api/firebase/firestore'
+import { subscribeToUserChats, getUserById, subscribeToUser } from '@/shared/api/firebase/firestore'
+import type { Unsubscribe } from 'firebase/firestore'
 import type { Chat } from '@/shared/types/chat'
 import type { User } from '@/shared/types/user'
 
@@ -14,14 +14,28 @@ export const useChatStore = defineStore('chat', () => {
     const chatParticipants = ref<Map<string, User>>(new Map())
     const isLoading = ref(false)
     const unsubscribeChats = ref<Unsubscribe | null>(null)
+    const userSubscriptions = ref<Map<string, Unsubscribe>>(new Map())
+    const temporaryChat = ref<Chat | null>(null)
 
     const myId = computed(() => userStore.userId)
-    const activeChat = computed(() => chats.value.find(c => c.id === activeChatId.value) || null)
+
+    const activeChat = computed(() => {
+        if (temporaryChat.value && activeChatId.value === temporaryChat.value.id) {
+            return temporaryChat.value
+        }
+
+        return chats.value.find(c => c.id === activeChatId.value) || null
+    })
+
+    const visibleChats = computed(() => {
+        return chats.value.filter(chat => {
+            return chat.lastMessage && chat.lastMessage.text
+        })
+    })
 
     const loadChats = () => {
         if (!myId.value) {
             console.error('ID пользователя недоступен')
-
             return
         }
 
@@ -47,17 +61,19 @@ export const useChatStore = defineStore('chat', () => {
             })
 
             for (const userId of participantIds) {
-                if (!chatParticipants.value.has(userId)) {
-                    try {
-                        const user = await getUserById(userId)
-
-                        if (user) {
-                            chatParticipants.value.set(userId, user)
-                        }
-                    } catch (error) {
-                        console.error(`Ошибка загрузки пользователя ${userId}:`, error)
-                    }
+                if (userSubscriptions.value.has(userId)) {
+                    continue
                 }
+
+                const unsubscribe = subscribeToUser(userId, user => {
+                    if (user) {
+                        chatParticipants.value.set(userId, user)
+                    } else {
+                        chatParticipants.value.delete(userId)
+                    }
+                })
+
+                userSubscriptions.value.set(userId, unsubscribe)
             }
 
             isLoading.value = false
@@ -65,6 +81,10 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const selectChat = (chatId: string) => {
+        if (!chatId) {
+            return
+        }
+
         activeChatId.value = chatId
     }
 
@@ -72,37 +92,74 @@ export const useChatStore = defineStore('chat', () => {
         activeChatId.value = null
     }
 
-    const openChatWithUser = async (userId: string) => {
+    const openChatWith = async (userId: string): Promise<void> => {
         if (!myId.value) {
-            console.error('Пользователь не авторизован')
-
-            return
+            throw new Error('Пользователь не авторизован')
         }
 
         if (userId === myId.value) {
-            console.error('Нельзя начать чат с самим собой')
+            throw new Error('Нельзя начать чат с самим собой')
+        }
 
-            return
+        if (!userId) {
+            throw new Error('userId обязателен')
         }
 
         try {
-            const chatId = await getOrCreateDirectChat(myId.value, userId)
+            const existingChat = chats.value.find(chat => {
+                if (chat.type === 'direct' && Array.isArray(chat.participants)) {
+                    return chat.participants.includes(userId) && chat.participants.includes(myId.value)
+                }
 
-            selectChat(chatId)
+                return false
+            })
 
-            if (!chatParticipants.value.has(userId)) {
+            if (existingChat) {
+                selectChat(existingChat.id)
+
+                temporaryChat.value = null
+            } else {
+                const tempChatId = `temp_${myId.value}_${userId}_${Date.now()}`
                 const user = await getUserById(userId)
 
                 if (user) {
                     chatParticipants.value.set(userId, user)
+
+                    if (!userSubscriptions.value.has(userId)) {
+                        const unsubscribe = subscribeToUser(userId, updatedUser => {
+                            if (updatedUser) {
+                                chatParticipants.value.set(userId, updatedUser)
+                            }
+                        })
+
+                        userSubscriptions.value.set(userId, unsubscribe)
+                    }
                 }
+
+                temporaryChat.value = {
+                    id: tempChatId,
+                    type: 'direct',
+                    participants: [myId.value, userId],
+                    createdAt: null as any,
+                    updatedAt: null as any,
+                    createdBy: myId.value,
+                    lastMessage: {
+                        text: '',
+                        senderId: '',
+                        createdAt: null as any
+                    }
+                }
+
+                activeChatId.value = tempChatId
             }
         } catch (error) {
             console.error('Ошибка при открытии чата:', error)
+
+            throw error
         }
     }
 
-    const getChatDisplayName = (chat: Chat): string => {
+    const otherUserName = (chat: Chat): string => {
         if (chat.type === 'group') {
             return chat.name || 'Групповой чат'
         }
@@ -113,11 +170,14 @@ export const useChatStore = defineStore('chat', () => {
             if (otherUserId) {
                 const user = chatParticipants.value.get(otherUserId)
 
-                return user?.displayName || user?.email || 'Unknown User'
+                return user?.displayName || user?.email || 'Неизвестный пользователь'
             }
         }
-
         return 'Чат'
+    }
+
+    const getChatDisplayName = (chat: Chat): string => {
+        return otherUserName(chat)
     }
 
     const getChatPhotoURL = (chat: Chat): string | null => {
@@ -138,15 +198,29 @@ export const useChatStore = defineStore('chat', () => {
         return null
     }
 
+    const getOtherUser = (chat: Chat): User | null => {
+        if (chat.type === 'direct' && Array.isArray(chat.participants)) {
+            const otherUserId = chat.participants.find(id => id !== myId.value)
+
+            if (otherUserId) {
+                return chatParticipants.value.get(otherUserId) || null
+            }
+        }
+        return null
+    }
+
     const cleanup = () => {
         if (unsubscribeChats.value) {
             unsubscribeChats.value()
             unsubscribeChats.value = null
         }
 
+        userSubscriptions.value.forEach(unsub => unsub())
+        userSubscriptions.value.clear()
         chats.value = []
         activeChatId.value = null
         chatParticipants.value.clear()
+        temporaryChat.value = null
     }
 
     return {
@@ -155,12 +229,16 @@ export const useChatStore = defineStore('chat', () => {
         activeChat,
         chatParticipants,
         isLoading,
+        visibleChats,
+        temporaryChat,
         loadChats,
         selectChat,
         closeActiveChat,
-        openChatWithUser,
+        openChatWith,
+        otherUserName,
         getChatDisplayName,
         getChatPhotoURL,
+        getOtherUser,
         cleanup
     }
 })
