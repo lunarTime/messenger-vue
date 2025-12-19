@@ -1,60 +1,66 @@
-# 💬 Real-Time Messenger (Vue 3 + WebSocket)
+# 💬 Real-Time Messenger (Vue 3 + Firebase)
 
-A minimal, fast and scalable real-time messenger built with **Vue 3**, **TypeScript**, **Pinia**, **Tailwind**, and a lightweight **Node.js WebSocket backend**.
+Fast and scalable real-time messenger built with **Vue 3**, **PrimeVue**, **Tailwind**, **Pinia**, **TypeScript**, and **Firebase**.
 
 ---
 
 ## 🚀 Features
-
-- ⚡ **Real-time messaging** via native WebSocket  
-- 👤 **Persistent user IDs** stored locally  
-- 💬 **Chat creation on demand**  
-- 📡 **Online/offline user presence**  
-- 📁 **File-based JSON storage** on backend
-- 🧩 **Modular architecture** following SOLID principles  
-- 🎨 **Modern UI** using Tailwind
-- 🔧 **Scalable structure** ready for growth
+- ⚡ **Real-time messaging** on Firebase (Firestore / Realtime Database listeners)
+- 🔐 **Authentication** powered by Firebase Authentication
+- 📡 **Online/offline presence and read status** through Firebase data updates
+- 📁 **Cloud storage** for message attachments via Firebase Storage
+- 🧩 **FSD** architecture to keep business logic and UI scalable and maintainable
+- 🎨 **Modern UI** with PrimeVue components styled by Tailwind utility classes
+- 🔧 **Production-ready** structure with strict typing and state via Pinia
 ---
 
 ## 🖥️ Development stack
 
 ### **Frontend**
-- Vue 3 (Composition API)
+- Vue 3 (Composition API, setup)
 - TypeScript
 - Pinia
+- PrimeVue
 - Tailwind
 - Vite
 
 ### **Backend**
-- Node.js (nodemon)
-- WebSocket server (ws)
-- JSON-based persistence
+- Firebase Authentication (email/password or Google)
+- Firebase Firestore / Realtime Database (messages, chats, presence)
+- Firebase Storage (files, avatars)
+
 ---
 
 ## 🛠️ Development setup
 
-###  Install dependencies on Client and Server folders
+###  1. Install dependencies
+
 ```bash
 npm install
-
-npm run dev
-
 ```
 
-##
+###  2. Configure Firebase
 
-The WebSocket server runs on:
-ws://localhost:8080
+Create a Firebase project and enable Authentication + Firestore.
 
-The frontend runs on:
-http://localhost:5173
+Create a `.env` file with Firebase config (see `.env.example`). All variables should use the `VITE_` prefix to be available in the app. 
+
+Make sure Firebase SDK is initialized.
+
+### 3. Start app
+
+```bash
+npm run dev
+```
+---
 
 ## 💬 How to start chatting
 
-After installing dependencies and running both the client and the server:
+After installing dependencies and configuring Firebase:
 
-- Open two different browsers or incognito mode to simulate two users.
+- Sign in (email/password or Google).
+- Create or select a chat in the chats list.
+- Send a message - it will appear in real time on all devices connected to the same chat, thanks to Firebase listeners.
+- Open the app in another browser/incognito window under a different account to test real-time messaging, presence, and read status between two users.
 
-- Go to the chat page and enter the user ID of the person you want to talk to in the search field.
 
-- Send the first message - the chat will be created automatically, and both users will start receiving real-time messages.
