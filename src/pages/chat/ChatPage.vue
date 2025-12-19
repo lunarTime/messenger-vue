@@ -28,7 +28,7 @@
             <SplitterPanel class="max-w-3xl min-w-fit">
                 <ChatList />
             </SplitterPanel>
-            <SplitterPanel class="flex min-w-fit">
+            <SplitterPanel class="flex min-w-80">
                 <div class="flex flex-col flex-1">
                     <div
                         v-if="!chatStore.activeChat"
