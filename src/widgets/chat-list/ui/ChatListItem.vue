@@ -3,6 +3,7 @@
     import { useChatStore } from '@/entities/chat/store/chat.store'
     import { useUserStore } from '@/entities/user/store/user.store'
     import { useTimeAgo } from '@/shared/composables/useTimeAgo'
+    import { useGlobalNow } from '@/shared/composables/useGlobalNow'
     import { subscribeToTyping } from '@/shared/api/firebase/firestore'
     import type { Timestamp } from 'firebase/firestore'
     import Avatar from 'primevue/avatar'
@@ -24,6 +25,7 @@
 
     const chatStore = useChatStore()
     const userStore = useUserStore()
+    const now = useGlobalNow(30000)
 
     let unsubscribeTyping: (() => void) | null = null
     const typingUsers = ref<string[]>([])
@@ -31,7 +33,19 @@
     const otherUser = computed(() => {
         return chatStore.chatParticipants.get(props.otherUserId) || null
     })
-    const isOnline = computed(() => otherUser.value?.isOnline ?? false)
+
+    const isOnline = computed(() => {
+        if (!otherUser.value) return false
+        if (!otherUser.value.isOnline) return false
+
+        if (otherUser.value.lastSeen) {
+            const lastSeenMillis = otherUser.value.lastSeen.toMillis()
+            const diff = now.value - lastSeenMillis
+            return diff < 120000
+        }
+        
+        return false
+    })
     const isTyping = computed(() => typingUsers.value.includes(props.otherUserId))
     const displayDate = useTimeAgo(props.date ?? null)
     const displayMessage = computed(() => {
