@@ -31,7 +31,7 @@ export async function getUserById(userId: string): Promise<User | null> {
         const userDoc = await getDoc(doc(db, 'users', userId))
 
         return userDoc.exists() ? ({ id: userDoc.id, ...userDoc.data() } as User) : null
-    } catch (error) {
+    } catch (_error) {
         return null
     }
 }
@@ -61,7 +61,7 @@ export async function setUserOnlineStatus(userId: string, isOnline: boolean): Pr
             isOnline,
             lastSeen: serverTimestamp()
         })
-    } catch (error) {}
+    } catch {}
 }
 
 export async function getOrCreateDirectChat(userId1: string, userId2: string): Promise<string> {
@@ -141,7 +141,7 @@ export function subscribeToUserChats(userId: string, callback: (chats: Chat[]) =
 
             callback(chats)
         },
-        error => {
+        _error => {
             callback([])
         }
     )
@@ -347,7 +347,7 @@ export function subscribeToUser(userId: string, callback: (user: User | null) =>
                 callback(null)
             }
         },
-        error => {
+        _error => {
             callback(null)
         }
     )
@@ -369,7 +369,7 @@ export async function setTypingStatus(chatId: string, userId: string, isTyping: 
         } else {
             await deleteDoc(typingRef)
         }
-    } catch (error) {}
+    } catch {}
 }
 
 export function subscribeToTyping(chatId: string, callback: (typingUsers: string[]) => void): Unsubscribe {
@@ -388,7 +388,7 @@ export function subscribeToTyping(chatId: string, callback: (typingUsers: string
 
             callback(typingUsers)
         },
-        error => {
+        _error => {
             callback([])
         }
     )
@@ -418,7 +418,7 @@ export async function markChatAsRead(chatId: string, userId: string, lastMessage
             },
             { merge: true }
         )
-    } catch (error) {}
+    } catch {}
 }
 
 export async function incrementUnreadCount(chatId: string, userId: string): Promise<void> {
@@ -443,7 +443,7 @@ export async function incrementUnreadCount(chatId: string, userId: string): Prom
                 joinedAt: serverTimestamp()
             })
         }
-    } catch (error) {}
+    } catch {}
 }
 
 export function subscribeToChatMember(
@@ -470,7 +470,7 @@ export function subscribeToChatMember(
                 callback(0)
             }
         },
-        error => {
+        _error => {
             callback(0)
         }
     )
@@ -503,7 +503,7 @@ export async function setMessageDeliveryStatus(
         }
 
         await setDoc(statusRef, statusData, { merge: true })
-    } catch (error) {}
+    } catch {}
 }
 
 export function subscribeToMessageDeliveryStatus(
@@ -531,7 +531,7 @@ export function subscribeToMessageDeliveryStatus(
                 callback(null)
             }
         },
-        error => {
+        _error => {
             callback(null)
         }
     )
@@ -673,7 +673,7 @@ export function subscribeToMessageDeletedForUser(
         snapshot => {
             callback(snapshot.exists())
         },
-        error => {
+        _error => {
             callback(false)
         }
     )

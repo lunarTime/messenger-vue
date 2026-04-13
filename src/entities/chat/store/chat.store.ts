@@ -45,7 +45,7 @@ export const useChatStore = defineStore('chat', () => {
 
         isLoading.value = true
 
-        unsubscribeChats.value = subscribeToUserChats(myId.value, async loadedChats => {
+        unsubscribeChats.value = subscribeToUserChats(myId.value!, async loadedChats => {
             chats.value = loadedChats
 
             const participantIds = new Set<string>()
@@ -53,7 +53,7 @@ export const useChatStore = defineStore('chat', () => {
             loadedChats.forEach(chat => {
                 if (chat.type === 'direct' && Array.isArray(chat.participants)) {
                     chat.participants.forEach(id => {
-                        if (id !== myId.value) {
+                        if (id !== myId.value!) {
                             participantIds.add(id)
                         }
                     })
@@ -108,7 +108,7 @@ export const useChatStore = defineStore('chat', () => {
         try {
             const existingChat = chats.value.find(chat => {
                 if (chat.type === 'direct' && Array.isArray(chat.participants)) {
-                    return chat.participants.includes(userId) && chat.participants.includes(myId.value)
+                    return chat.participants.includes(userId) && chat.participants.includes(myId.value!)
                 }
 
                 return false
@@ -119,7 +119,8 @@ export const useChatStore = defineStore('chat', () => {
 
                 temporaryChat.value = null
             } else {
-                const tempChatId = `temp_${myId.value}_${userId}_${Date.now()}`
+                const myIdVal = myId.value!
+                const tempChatId = `temp_${myIdVal}_${userId}_${Date.now()}`
                 const user = await getUserById(userId)
 
                 if (user) {
@@ -139,10 +140,10 @@ export const useChatStore = defineStore('chat', () => {
                 temporaryChat.value = {
                     id: tempChatId,
                     type: 'direct',
-                    participants: [myId.value, userId],
+                    participants: [myIdVal, userId],
                     createdAt: null as any,
                     updatedAt: null as any,
-                    createdBy: myId.value,
+                    createdBy: myIdVal,
                     lastMessage: {
                         text: '',
                         senderId: '',
