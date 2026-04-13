@@ -14,15 +14,19 @@
         deliveryStatus?: MessageStatus
     }>()
 
-    const isOutgoing = computed(() => props.variant === 'outgoing')
+    const emit = defineEmits<{
+        edit: []
+        deleteForMe: []
+        deleteForAll: []
+    }>()
 
+    const isOutgoing = computed(() => props.variant === 'outgoing')
     const bubbleClasses = computed(() => [
         'lg:max-w-200 max-w-full w-fit px-3 py-1 rounded-2xl shadow-sm',
         isOutgoing.value
             ? 'self-end bg-(--p-primary-color)/70 rounded-br-sm'
             : 'self-start bg-(--p-primary-color)/20 rounded-bl-sm'
     ])
-
     const timeDisplay = computed(() => {
         if (!props.createdAt) {
             return ''
@@ -30,9 +34,7 @@
 
         return formatTime(props.createdAt)
     })
-
     const showDeliveryStatus = computed(() => isOutgoing.value && !props.deleted)
-
     const deliveryIcon = computed(() => {
         if (!showDeliveryStatus.value) {
             return null
