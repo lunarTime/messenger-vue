@@ -19,9 +19,13 @@ import { db } from '@/app/providers/firebase'
 import type { Chat } from '@/shared/types/chat'
 import type { Message, MessageStatus } from '@/shared/types/message'
 import type { User } from '@/shared/types/user'
+import { sanitizeText } from '@/shared/lib/sanitization/sanitizer'
+import { VALIDATION_CONFIG } from '@/shared/config/validation.config'
 
 export async function getUserById(userId: string): Promise<User | null> {
-    if (!userId) return null
+    if (!userId) {
+        return null
+    }
 
     try {
         const userDoc = await getDoc(doc(db, 'users', userId))
@@ -48,7 +52,9 @@ export async function updateUserProfile(userId: string, data: Partial<User>): Pr
 }
 
 export async function setUserOnlineStatus(userId: string, isOnline: boolean): Promise<void> {
-    if (!userId) return
+    if (!userId) {
+        return
+    }
 
     try {
         await updateDoc(doc(db, 'users', userId), {
@@ -132,6 +138,7 @@ export function subscribeToUserChats(userId: string, callback: (chats: Chat[]) =
                 id: doc.id,
                 ...doc.data()
             })) as Chat[]
+
             callback(chats)
         },
         error => {
@@ -145,14 +152,15 @@ export async function sendMessage(chatId: string, senderId: string, text: string
         throw new Error('Неверные параметры сообщения')
     }
 
-    const trimmedText = text.trim()
+    const sanitizedText = sanitizeText(text, {
+        allowBasicHtml: false,
+        maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+        stripNewlines: false,
+        normalizeSpaces: true
+    })
 
-    if (trimmedText.length === 0) {
+    if (sanitizedText.length === 0) {
         throw new Error('Сообщение не может быть пустым')
-    }
-
-    if (trimmedText.length > 10000) {
-        throw new Error('Слишком длинное сообщение (максимум 10000 символов)')
     }
 
     try {
@@ -160,7 +168,7 @@ export async function sendMessage(chatId: string, senderId: string, text: string
             chatId,
             senderId,
             type: 'text' as const,
-            text: trimmedText,
+            text: sanitizedText,
             isEdited: false,
             isDeleted: false,
             createdAt: serverTimestamp()
@@ -186,7 +194,7 @@ export async function sendMessage(chatId: string, senderId: string, text: string
 
         await updateDoc(doc(db, 'chats', chatId), {
             lastMessage: {
-                text: trimmedText,
+                text: sanitizedText,
                 senderId,
                 createdAt: serverTimestamp()
             },
@@ -252,7 +260,7 @@ export function subscribeToChatMessages(
 
     return onSnapshot(
         q,
-        snapshot => {
+        async snapshot => {
             const messages = snapshot.docs
                 .map(doc => {
                     const data = doc.data()
@@ -276,7 +284,31 @@ export function subscribeToChatMessages(
                 })
                 .reverse()
 
+            let filteredMessages = messages
+
             if (currentUserId) {
+                const deletedChecks = await Promise.allSettled(
+                    messages.map(async message => {
+                        const deletedRef = doc(db, 'chats', chatId, 'messages', message.id, 'deletedFor', currentUserId)
+                        const deletedDoc = await getDoc(deletedRef)
+
+                        return {
+                            messageId: message.id,
+                            isDeleted: deletedDoc.exists()
+                        }
+                    })
+                )
+
+                const deletedSet = new Set<string>()
+
+                deletedChecks.forEach(result => {
+                    if (result.status === 'fulfilled' && result.value.isDeleted) {
+                        deletedSet.add(result.value.messageId)
+                    }
+                })
+
+                filteredMessages = messages.filter(msg => !deletedSet.has(msg.id))
+
                 snapshot.docChanges().forEach(change => {
                     if (change.type === 'added') {
                         const messageData = change.doc.data()
@@ -290,9 +322,10 @@ export function subscribeToChatMessages(
                 })
             }
 
-            callback(messages)
+            callback(filteredMessages)
         },
         error => {
+            console.error('Ошибка подписки на сообщения:', error)
             callback([])
         }
     )
@@ -352,6 +385,7 @@ export function subscribeToTyping(chatId: string, callback: (typingUsers: string
         typingRef,
         snapshot => {
             const typingUsers = snapshot.docs.map(doc => doc.data().userId as string).filter(Boolean)
+
             callback(typingUsers)
         },
         error => {
@@ -430,6 +464,7 @@ export function subscribeToChatMember(
         snapshot => {
             if (snapshot.exists()) {
                 const data = snapshot.data()
+
                 callback((data.unreadCount || 0) as number)
             } else {
                 callback(0)
@@ -490,6 +525,7 @@ export function subscribeToMessageDeliveryStatus(
         snapshot => {
             if (snapshot.exists()) {
                 const data = snapshot.data()
+
                 callback((data.status || 'sent') as MessageStatus)
             } else {
                 callback(null)
@@ -497,6 +533,148 @@ export function subscribeToMessageDeliveryStatus(
         },
         error => {
             callback(null)
+        }
+    )
+}
+
+export async function editMessage(chatId: string, messageId: string, newText: string, userId: string): Promise<void> {
+    if (!chatId || !messageId || !newText?.trim() || !userId) {
+        throw new Error('Неверные параметры для редактирования сообщения')
+    }
+
+    const sanitizedText = sanitizeText(newText, {
+        allowBasicHtml: false,
+        maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+        stripNewlines: false,
+        normalizeSpaces: true
+    })
+
+    if (sanitizedText.length === 0) {
+        throw new Error('Сообщение не может быть пустым')
+    }
+
+    try {
+        const messageRef = doc(db, 'chats', chatId, 'messages', messageId)
+        const messageDoc = await getDoc(messageRef)
+
+        if (!messageDoc.exists()) {
+            throw new Error('Сообщение не найдено')
+        }
+
+        const messageData = messageDoc.data()
+
+        if (messageData.senderId !== userId) {
+            throw new Error('Нет прав для редактирования этого сообщения')
+        }
+
+        if (messageData.isDeleted) {
+            throw new Error('Нельзя редактировать удалённое сообщение')
+        }
+
+        await updateDoc(messageRef, {
+            text: sanitizedText,
+            isEdited: true,
+            updatedAt: serverTimestamp()
+        })
+
+        const chatDoc = await getDoc(doc(db, 'chats', chatId))
+
+        if (chatDoc.exists()) {
+            const chatData = chatDoc.data() as Chat
+
+            if (chatData.lastMessage?.senderId === userId) {
+                await updateDoc(doc(db, 'chats', chatId), {
+                    'lastMessage.text': sanitizedText,
+                    updatedAt: serverTimestamp()
+                })
+            }
+        }
+    } catch (error) {
+        throw error
+    }
+}
+
+export async function deleteMessageForMe(chatId: string, messageId: string, userId: string): Promise<void> {
+    if (!chatId || !messageId || !userId) {
+        throw new Error('Неверные параметры для удаления сообщения')
+    }
+
+    try {
+        const deletedRef = doc(db, 'chats', chatId, 'messages', messageId, 'deletedFor', userId)
+
+        await setDoc(deletedRef, {
+            userId,
+            deletedAt: serverTimestamp()
+        })
+    } catch (error) {
+        throw error
+    }
+}
+
+export async function deleteMessageForAll(chatId: string, messageId: string, userId: string): Promise<void> {
+    if (!chatId || !messageId || !userId) {
+        throw new Error('Неверные параметры для удаления сообщения')
+    }
+
+    try {
+        const messageRef = doc(db, 'chats', chatId, 'messages', messageId)
+        const messageDoc = await getDoc(messageRef)
+
+        if (!messageDoc.exists()) {
+            throw new Error('Сообщение не найдено')
+        }
+
+        const messageData = messageDoc.data()
+
+        if (messageData.senderId !== userId) {
+            throw new Error('Нет прав для удаления этого сообщения')
+        }
+
+        await updateDoc(messageRef, {
+            isDeleted: true,
+            text: 'Сообщение удалено',
+            deletedAt: serverTimestamp(),
+            deletedBy: userId
+        })
+
+        const chatDoc = await getDoc(doc(db, 'chats', chatId))
+
+        if (chatDoc.exists()) {
+            const chatData = chatDoc.data() as Chat
+
+            if (chatData.lastMessage?.senderId === userId) {
+                await updateDoc(doc(db, 'chats', chatId), {
+                    'lastMessage.text': 'Сообщение удалено',
+                    updatedAt: serverTimestamp()
+                })
+            }
+        }
+    } catch (error) {
+        throw error
+    }
+}
+
+export function subscribeToMessageDeletedForUser(
+    chatId: string,
+    messageId: string,
+    userId: string,
+    callback: (isDeleted: boolean) => void
+): Unsubscribe {
+    if (!chatId || !messageId || !userId) {
+        callback(false)
+
+        return () => {}
+    }
+
+    const deletedRef = doc(db, 'chats', chatId, 'messages', messageId, 'deletedFor', userId)
+
+    return onSnapshot(
+        deletedRef,
+        snapshot => {
+            callback(snapshot.exists())
+        },
+        error => {
+            callback(false)
         }
     )
 }
