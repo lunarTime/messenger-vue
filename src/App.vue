@@ -2,6 +2,8 @@
     import { RouterView } from 'vue-router'
     import { useTheme } from '@/shared/composables/useTheme'
     import AnimateBG from '@/shared/ui/AnimateBG.vue'
+    import ConfirmPopup from 'primevue/confirmpopup'
+    import Toast from 'primevue/toast'
 
     useTheme()
 </script>
@@ -17,6 +19,8 @@
             <component :is="Component" />
         </transition>
     </RouterView>
+    <ConfirmPopup />
+    <Toast />
 </template>
 
 <style scoped>

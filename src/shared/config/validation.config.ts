@@ -20,6 +20,9 @@ export const VALIDATION_CONFIG = {
     },
     TYPING: {
         DEBOUNCE_MS: 3000
+    },
+    TOAST: {
+        LIFE_TIME: 3000
     }
 } as const
 

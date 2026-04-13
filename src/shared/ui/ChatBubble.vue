@@ -14,44 +14,26 @@
         deliveryStatus?: MessageStatus
     }>()
 
-    const emit = defineEmits<{
-        edit: []
-        deleteForMe: []
-        deleteForAll: []
-    }>()
-
     const isOutgoing = computed(() => props.variant === 'outgoing')
+
     const bubbleClasses = computed(() => [
         'lg:max-w-200 max-w-full w-fit px-3 py-1 rounded-2xl shadow-sm',
-        isOutgoing.value
-            ? 'self-end bg-(--p-primary-color)/70 rounded-br-sm'
-            : 'self-start bg-(--p-primary-color)/20 rounded-bl-sm'
+        isOutgoing.value ? 'bg-(--p-primary-color)/70 rounded-br-sm' : 'bg-(--p-primary-color)/20 rounded-bl-sm'
     ])
-    const timeDisplay = computed(() => {
-        if (!props.createdAt) {
-            return ''
-        }
 
+    const timeDisplay = computed(() => {
+        if (!props.createdAt) return ''
         return formatTime(props.createdAt)
     })
+
     const showDeliveryStatus = computed(() => isOutgoing.value && !props.deleted)
+
     const deliveryIcon = computed(() => {
-        if (!showDeliveryStatus.value) {
-            return null
-        }
+        if (!showDeliveryStatus.value) return null
 
-        if (props.deliveryStatus === 'failed') {
-            return 'failed'
-        }
-
-        if (props.deliveryStatus === 'read') {
-            return 'read'
-        }
-
-        if (props.deliveryStatus === 'delivered') {
-            return 'delivered'
-        }
-
+        if (props.deliveryStatus === 'failed') return 'failed'
+        if (props.deliveryStatus === 'read') return 'read'
+        if (props.deliveryStatus === 'delivered') return 'delivered'
         return 'sent'
     })
 </script>
@@ -60,7 +42,7 @@
     <div :class="bubbleClasses">
         <template v-if="!deleted">
             <div class="flex flex-col gap-1">
-                <div class="text-sm md:text-base break-all">
+                <div class="text-sm md:text-base break-all whitespace-pre-wrap">
                     {{ text }}
                 </div>
 

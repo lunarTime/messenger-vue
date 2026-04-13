@@ -1,6 +1,7 @@
 import type { App } from 'vue'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
+import ConfirmationService from 'primevue/confirmationservice'
 import { useUserStore } from '@/entities/user/store/user.store'
 import { useChatStore } from '@/entities/chat/store/chat.store'
 import { useMessageStore } from '@/entities/message/store/message.store'
@@ -9,6 +10,7 @@ import { setupRouter } from '@/app/providers/router'
 import { customTheme } from '@/app/config/theme'
 
 function setupPrimeVue(app: App) {
+    app.use(ConfirmationService)
     app.use(ToastService)
     app.use(PrimeVue, {
         theme: {

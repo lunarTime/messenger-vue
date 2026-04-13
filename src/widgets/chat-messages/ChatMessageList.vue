@@ -6,6 +6,7 @@
     import { useUserStore } from '@/entities/user/store/user.store'
     import { markChatAsRead } from '@/shared/api/firebase/firestore'
     import ChatBubble from '@/widgets/chat-messages/ui/ChatBubble.vue'
+    import ChatMessages from '@/widgets/chat-messages/ChatMessages.vue'
     import ProgressSpinner from 'primevue/progressspinner'
     import Button from 'primevue/button'
 

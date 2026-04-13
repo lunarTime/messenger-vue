@@ -6,7 +6,11 @@ import {
     subscribeToChatMessages,
     sendMessage as sendFirebaseMessage,
     subscribeToMessageDeliveryStatus,
-    getOrCreateDirectChat
+    getOrCreateDirectChat,
+    editMessage as editFirebaseMessage,
+    deleteMessageForMe as deleteFirebaseMessageForMe,
+    deleteMessageForAll as deleteFirebaseMessageForAll,
+    subscribeToMessageDeletedForUser
 } from '@/shared/api/firebase/firestore'
 import type { Message, MessageStatus } from '@/shared/types/message'
 import type { Unsubscribe } from 'firebase/firestore'
@@ -20,6 +24,7 @@ export const useMessageStore = defineStore('messages', () => {
     const unsubscribeMessages = ref<Unsubscribe | null>(null)
     const messageStatuses = ref<Map<string, MessageStatus>>(new Map())
     const statusUnsubscribers = ref<Map<string, Unsubscribe>>(new Map())
+    const deletedForUnsubscribers = ref<Map<string, Unsubscribe>>(new Map())
 
     watch(
         () => chatStore.activeChatId,
@@ -60,24 +65,36 @@ export const useMessageStore = defineStore('messages', () => {
                 messages.value = loadedMessages
                 isLoading.value = false
 
+                // loadedMessages.forEach(msg => {
+                //     if (msg.senderId === userStore.userId) {
+                //         const chatMembers =
+                //             chatStore.activeChat?.participants.filter(id => id !== userStore.userId) || []
+
+                //         if (chatMembers.length > 0) {
+                //             const otherUserId = chatMembers[0]
+
+                //             if (!statusUnsubscribers.value.has(msg.id)) {
+                //                 const unsub = subscribeToMessageDeliveryStatus(msg.id, chatId, otherUserId, status => {
+                //                     if (status) {
+                //                         messageStatuses.value.set(msg.id, status)
+                //                     }
+                //                 })
+
+                //                 statusUnsubscribers.value.set(msg.id, unsub)
+                //             }
+                //         }
+                //     }
+                // })
+
                 loadedMessages.forEach(msg => {
-                    if (msg.senderId === userStore.userId) {
-                        const chatMembers =
-                            chatStore.activeChat?.participants.filter(id => id !== userStore.userId) || []
-
-                        if (chatMembers.length > 0) {
-                            const otherUserId = chatMembers[0]
-
-                            if (!statusUnsubscribers.value.has(msg.id)) {
-                                const unsub = subscribeToMessageDeliveryStatus(msg.id, chatId, otherUserId, status => {
-                                    if (status) {
-                                        messageStatuses.value.set(msg.id, status)
-                                    }
-                                })
-
-                                statusUnsubscribers.value.set(msg.id, unsub)
+                    if (!deletedForUnsubscribers.value.has(msg.id)) {
+                        const unsub = subscribeToMessageDeletedForUser(chatId, msg.id, userStore.userId!, isDeleted => {
+                            if (isDeleted) {
+                                messages.value = messages.value.filter(m => m.id !== msg.id)
                             }
-                        }
+                        })
+
+                        deletedForUnsubscribers.value.set(msg.id, unsub)
                     }
                 })
             },
@@ -113,9 +130,57 @@ export const useMessageStore = defineStore('messages', () => {
                 chatStore.selectChat(actualChatId)
             }
 
-            await sendFirebaseMessage(actualChatId, myId, text.trim())
+            await sendFirebaseMessage(actualChatId, myId, text)
         } catch (error) {
-            console.error('Ошибка отправки сообщения:', error)
+            throw error
+        }
+    }
+
+    const editMessage = async (messageId: string, newText: string): Promise<void> => {
+        const chatId = chatStore.activeChatId
+        const myId = userStore.userId
+
+        if (!chatId || !myId) {
+            throw new Error('Невозможно отредактировать сообщение: нет активного чата или пользователь не авторизован')
+        }
+
+        if (!newText?.trim()) {
+            throw new Error('Текст сообщения не может быть пустым')
+        }
+
+        try {
+            await editFirebaseMessage(chatId, messageId, newText, myId)
+        } catch (error) {
+            throw error
+        }
+    }
+
+    const deleteMessageForMe = async (messageId: string): Promise<void> => {
+        const chatId = chatStore.activeChatId
+        const myId = userStore.userId
+
+        if (!chatId || !myId) {
+            throw new Error('Невозможно удалить сообщение: нет активного чата или пользователь не авторизован')
+        }
+
+        try {
+            await deleteFirebaseMessageForMe(chatId, messageId, myId)
+        } catch (error) {
+            throw error
+        }
+    }
+
+    const deleteMessageForAll = async (messageId: string): Promise<void> => {
+        const chatId = chatStore.activeChatId
+        const myId = userStore.userId
+
+        if (!chatId || !myId) {
+            throw new Error('Невозможно удалить сообщение: нет активного чата или пользователь не авторизован')
+        }
+
+        try {
+            await deleteFirebaseMessageForAll(chatId, messageId, myId)
+        } catch (error) {
             throw error
         }
     }
@@ -127,7 +192,9 @@ export const useMessageStore = defineStore('messages', () => {
         }
 
         statusUnsubscribers.value.forEach(unsub => unsub())
+        deletedForUnsubscribers.value.forEach(unsub => unsub())
         statusUnsubscribers.value.clear()
+        deletedForUnsubscribers.value.clear()
         messageStatuses.value.clear()
         messages.value = []
     }
@@ -137,6 +204,9 @@ export const useMessageStore = defineStore('messages', () => {
         isLoading,
         messageStatuses,
         sendMessage,
+        editMessage,
+        deleteMessageForMe,
+        deleteMessageForAll,
         cleanup
     }
 })
