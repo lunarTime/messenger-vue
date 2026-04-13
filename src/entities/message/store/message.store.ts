@@ -5,7 +5,6 @@ import { useUserStore } from '@/entities/user/store/user.store'
 import {
     subscribeToChatMessages,
     sendMessage as sendFirebaseMessage,
-    subscribeToMessageDeliveryStatus,
     getOrCreateDirectChat,
     editMessage as editFirebaseMessage,
     deleteMessageForMe as deleteFirebaseMessageForMe,

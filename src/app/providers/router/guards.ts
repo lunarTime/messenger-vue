@@ -2,7 +2,7 @@ import type { Router } from 'vue-router'
 import { useUserStore } from '@/entities/user/store/user.store'
 
 export function setupRouterGuards(router: Router) {
-    router.beforeEach(async (to, from, next) => {
+    router.beforeEach(async (to, _from, next) => {
         const userStore = useUserStore()
 
         if (userStore.isLoading) {

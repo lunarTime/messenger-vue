@@ -31,5 +31,25 @@ export default defineConfig({
     server: {
         port: 5173,
         strictPort: true
+    },
+
+    build: {
+        outDir: 'dist',
+        sourcemap: false,
+        rollupOptions: {
+            output: {
+                manualChunks(id) {
+                    if (id.includes('node_modules')) {
+                        if (id.includes('firebase')) {
+                            return 'firebase'
+                        }
+                        if (id.includes('primevue')) {
+                            return 'primevue'
+                        }
+                        return 'vendor'
+                    }
+                }
+            }
+        }
     }
 })
