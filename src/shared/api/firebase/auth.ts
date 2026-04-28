@@ -82,6 +82,11 @@ export async function loginWithEmail(email: string, password: string) {
 export async function signInWithGoogle() {
     try {
         const provider = new GoogleAuthProvider()
+
+        provider.setCustomParameters({
+            prompt: 'select_account'
+        })
+
         const userCredential = await signInWithPopup(auth, provider)
         const user = userCredential.user
         const userDocRef = doc(db, 'users', user.uid)
