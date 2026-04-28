@@ -1,55 +1,59 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import tailwindcss from '@tailwindcss/vite'
-import path from 'node:path'
-import Components from 'unplugin-vue-components/vite'
-import { PrimeVueResolver } from '@primevue/auto-import-resolver'
+import { defineConfig, loadEnv } from "vite";
+import vue from "@vitejs/plugin-vue";
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
+import Components from "unplugin-vue-components/vite";
+import { PrimeVueResolver } from "@primevue/auto-import-resolver";
 
-export default defineConfig({
-    base: '/messenger-vue/',
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
+  return {
+    base: env.VITE_BASE_URL || "/",
     plugins: [
-        vue(),
-        tailwindcss(),
-        Components({
-            resolvers: [PrimeVueResolver()]
-        })
+      vue(),
+      tailwindcss(),
+      Components({
+        resolvers: [PrimeVueResolver()],
+      }),
     ],
 
     resolve: {
-        alias: {
-            '@app': path.resolve(__dirname, 'src/app'),
-            '@shared': path.resolve(__dirname, 'src/shared'),
-            '@entities': path.resolve(__dirname, 'src/entities'),
-            '@features': path.resolve(__dirname, 'src/features'),
-            '@widgets': path.resolve(__dirname, 'src/widgets'),
-            '@pages': path.resolve(__dirname, 'src/pages'),
-            '@processes': path.resolve(__dirname, 'src/processes'),
-            '@': path.resolve(__dirname, 'src')
-        }
+      alias: {
+        "@app": path.resolve(__dirname, "src/app"),
+        "@shared": path.resolve(__dirname, "src/shared"),
+        "@entities": path.resolve(__dirname, "src/entities"),
+        "@features": path.resolve(__dirname, "src/features"),
+        "@widgets": path.resolve(__dirname, "src/widgets"),
+        "@pages": path.resolve(__dirname, "src/pages"),
+        "@processes": path.resolve(__dirname, "src/processes"),
+        "@": path.resolve(__dirname, "src"),
+      },
     },
 
     server: {
-        port: 5173,
-        strictPort: true
+      port: 5173,
+      strictPort: true,
     },
 
     build: {
-        outDir: 'dist',
-        sourcemap: false,
-        rollupOptions: {
-            output: {
-                manualChunks(id) {
-                    if (id.includes('node_modules')) {
-                        if (id.includes('firebase')) {
-                            return 'firebase'
-                        }
-                        if (id.includes('primevue')) {
-                            return 'primevue'
-                        }
-                        return 'vendor'
-                    }
-                }
+      outDir: "dist",
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("node_modules")) {
+              if (id.includes("firebase")) {
+                return "firebase";
+              }
+              if (id.includes("primevue")) {
+                return "primevue";
+              }
+              return "vendor";
             }
-        }
-    }
-})
+          },
+        },
+      },
+    },
+  };
+});
