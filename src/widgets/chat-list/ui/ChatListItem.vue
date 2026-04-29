@@ -4,8 +4,12 @@ import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useTimeAgo } from "@/shared/composables/useTimeAgo";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
-import { subscribeToTyping } from "@/shared/api/firebase/firestore";
+import {
+  subscribeToMessageDeliveryStatus,
+  subscribeToTyping,
+} from "@/shared/api/firebase/firestore";
 import type { Timestamp } from "firebase/firestore";
+import type { MessageStatus } from "@/shared/types/message";
 import ChatContextMenu from "@/features/chat-actions/ui/ChatContextMenu.vue";
 import Avatar from "primevue/avatar";
 import Badge from "primevue/badge";
@@ -15,6 +19,7 @@ const props = defineProps<{
   otherUserId: string;
   name: string;
   lastMessage?: {
+    id?: string;
     text: string;
     senderId: string;
     createdAt: Timestamp;
@@ -36,6 +41,8 @@ const contextMenuRef = ref<InstanceType<typeof ChatContextMenu> | null>(null);
 
 let unsubscribeTyping: (() => void) | null = null;
 const typingUsers = ref<string[]>([]);
+let unsubscribeLastStatus: (() => void) | null = null;
+const lastMessageStatus = ref<MessageStatus | null>(null);
 
 const otherUser = computed(() => {
   return chatStore.chatParticipants.get(props.otherUserId) || null;
@@ -56,6 +63,12 @@ const isOnline = computed(() => {
 const isTyping = computed(() => typingUsers.value.includes(props.otherUserId));
 const displayDate = useTimeAgo(props.date ?? null);
 const isPinned = computed(() => chatStore.isChatPinned(props.chatId));
+const isLastOutgoing = computed(() => {
+  const myId = userStore.userId;
+  if (!myId) return false;
+  if (!props.lastMessage) return false;
+  return props.lastMessage.senderId === myId;
+});
 const displayMessage = computed(() => {
   if (isTyping.value) {
     return "печатает...";
@@ -75,6 +88,9 @@ watch(
   (chatId) => {
     unsubscribeTyping?.();
     unsubscribeTyping = null;
+    unsubscribeLastStatus?.();
+    unsubscribeLastStatus = null;
+    lastMessageStatus.value = null;
 
     if (!chatId) {
       return;
@@ -90,6 +106,34 @@ watch(
 );
 
 watch(
+  () =>
+    [
+      props.chatId,
+      props.lastMessage?.id,
+      props.otherUserId,
+      isLastOutgoing.value,
+    ] as const,
+  ([chatId, lastMessageId, otherUserId, outgoing]) => {
+    unsubscribeLastStatus?.();
+    unsubscribeLastStatus = null;
+    lastMessageStatus.value = null;
+
+    if (!outgoing) return;
+    if (!chatId || !lastMessageId || !otherUserId) return;
+
+    unsubscribeLastStatus = subscribeToMessageDeliveryStatus(
+      lastMessageId,
+      chatId,
+      otherUserId,
+      (status) => {
+        lastMessageStatus.value = status;
+      },
+    );
+  },
+  { immediate: true },
+);
+
+watch(
   () => props.openContextChatId,
   (openId) => {
     if (openId && openId !== props.chatId) {
@@ -100,6 +144,7 @@ watch(
 
 onUnmounted(() => {
   unsubscribeTyping?.();
+  unsubscribeLastStatus?.();
 });
 
 const onContextMenu = (event: MouseEvent) => {
@@ -161,12 +206,66 @@ const onContextMenu = (event: MouseEvent) => {
           {{ displayMessage }}
         </p>
 
-        <Badge
-          v-if="unreadCount && unreadCount > 0"
-          :value="unreadCount"
-          severity="contrast"
-          size="small"
-        />
+        <div class="shrink-0">
+          <template v-if="isLastOutgoing">
+            <i
+              v-if="lastMessageStatus === 'failed'"
+              class="pi pi-times-circle text-red-500"
+              title="Ошибка"
+            />
+
+            <div
+              v-else-if="
+                lastMessageStatus === 'read' ||
+                lastMessageStatus === 'delivered'
+              "
+              class="flex -space-x-3.5"
+              title="Прочитано"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+                data-slot="icon"
+                class="size-5"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+                data-slot="icon"
+                class="size-5"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </div>
+            <i
+              v-else-if="lastMessageStatus === 'sending'"
+              class="pi pi-clock opacity-50"
+              title="Отправка..."
+            />
+            <i v-else class="pi pi-check opacity-70" title="Отправлено" />
+          </template>
+
+          <Badge
+            v-else-if="unreadCount && unreadCount > 0"
+            :value="unreadCount"
+            severity="contrast"
+            size="small"
+          />
+        </div>
       </div>
     </div>
   </div>
