@@ -7,6 +7,7 @@ import { useMessageStore } from "@/entities/message/store/message.store";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useMessageActions } from "@/features/message-actions/model/useMessageActions";
+import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
 import ChatMessageItem from "@/widgets/chat-messages/ui/ChatMessageItem.vue";
@@ -14,6 +15,7 @@ import ProgressSpinner from "primevue/progressspinner";
 import Textarea from "primevue/textarea";
 import Dialog from "primevue/dialog";
 import Button from "primevue/button";
+import Message from "primevue/message";
 
 const confirm = useConfirm();
 const toast = useToast();
@@ -29,6 +31,8 @@ const isUserScrolling = ref(false);
 const editDialogVisible = ref(false);
 const editingMessageId = ref<string | null>(null);
 const editingText = ref("");
+
+const { isRewriting, aiError, handleRewrite } = useAiRewrite(editingText);
 
 const hasMessages = computed(() => messageStore.messages.length > 0);
 const showContent = computed(
@@ -240,7 +244,7 @@ const handleDeleteForAll = (messageId: string) => {
     <div
       v-if="showContent"
       ref="containerRef"
-      class="h-full overflow-y-auto overflow-x-hidden px-4 py-2"
+      class="h-full overflow-y-auto overflow-x-hidden pr-2"
     >
       <div class="flex flex-col gap-2">
         <ChatMessageItem
@@ -283,21 +287,64 @@ const handleDeleteForAll = (messageId: string) => {
       :breakpoints="{ '1199px': '75vw', '769px': '90vw' }"
     >
       <div class="flex flex-col gap-4">
-        <Textarea
-          v-model="editingText"
-          rows="5"
-          auto-resize
-          placeholder="Введите текст сообщения"
-          class="w-full"
-        />
+        <Transition
+          enter-active-class="transition-all duration-200 ease-out"
+          enter-from-class="opacity-0 -translate-y-2"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition-all duration-150 ease-in"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 -translate-y-2"
+        >
+          <Message v-if="aiError" :closable="false" severity="error">
+            {{ aiError }}
+          </Message>
+        </Transition>
+
+        <div class="relative">
+          <Textarea
+            v-model="editingText"
+            rows="5"
+            auto-resize
+            placeholder="Введите текст сообщения"
+            class="w-full"
+            :disabled="isRewriting"
+          />
+
+          <Transition
+            enter-active-class="transition-opacity duration-200"
+            enter-from-class="opacity-0"
+            enter-to-class="opacity-100"
+            leave-active-class="transition-opacity duration-150"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+          >
+            <Button
+              v-if="editingText.trim()"
+              type="button"
+              :loading="isRewriting"
+              @click="handleRewrite"
+              icon="pi pi-sparkles"
+              class="absolute top-2 right-2 w-8! h-8!"
+              rounded
+              text
+              severity="help"
+              v-tooltip.top="'Переписать в корпоративном стиле'"
+            />
+          </Transition>
+        </div>
       </div>
 
       <template #footer>
-        <Button label="Отмена" severity="secondary" @click="cancelEdit" />
+        <Button
+          label="Отмена"
+          severity="secondary"
+          @click="cancelEdit"
+          :disabled="isRewriting"
+        />
         <Button
           label="Сохранить"
           @click="confirmEdit"
-          :disabled="!editingText.trim()"
+          :disabled="!editingText.trim() || isRewriting"
         />
       </template>
     </Dialog>
