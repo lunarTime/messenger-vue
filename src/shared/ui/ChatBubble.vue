@@ -17,7 +17,7 @@ const props = defineProps<{
 const isOutgoing = computed(() => props.variant === "outgoing");
 
 const bubbleClasses = computed(() => [
-  "lg:max-w-200 max-w-full w-fit px-3 py-1 rounded-2xl shadow-sm",
+  "lg:max-w-140 max-w-full w-fit px-3 py-1 rounded-2xl shadow-sm",
   isOutgoing.value
     ? "bg-(--p-primary-color)/70 rounded-br-sm"
     : "bg-(--p-primary-color)/20 rounded-bl-sm",
@@ -43,8 +43,8 @@ const deliveryIcon = computed(() => {
 <template>
   <div :class="bubbleClasses">
     <template v-if="!deleted">
-      <div class="flex flex-col gap-1 hyphens-auto wrap-break-words">
-        <div class="text-sm md:text-base">
+      <div class="flex flex-col gap-1">
+        <div class="text-sm md:text-base break-all">
           {{ text }}
         </div>
 
