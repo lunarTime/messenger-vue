@@ -366,6 +366,7 @@ export async function sendMessage(
 
     await updateDoc(doc(db, "chats", chatId), {
       lastMessage: {
+        id: messageId,
         text: sanitizedText,
         senderId,
         createdAt: serverTimestamp(),
