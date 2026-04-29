@@ -219,7 +219,7 @@ export async function sendMessage(
   }
 }
 
-export async function searchUsers(searchTerm: string): Promise<User[]> {
+export async function searchUsers(searchTerm: string, limitCount: number = 50): Promise<User[]> {
   if (!searchTerm?.trim() || searchTerm.length < 2) return [];
 
   try {
@@ -230,14 +230,14 @@ export async function searchUsers(searchTerm: string): Promise<User[]> {
       usersRef,
       where("email", ">=", term),
       where("email", "<=", term + "\uf8ff"),
-      limit(10),
+      limit(limitCount),
     );
 
     const qName = query(
       usersRef,
       where("displayName", ">=", searchTerm),
       where("displayName", "<=", searchTerm + "\uf8ff"),
-      limit(10),
+      limit(limitCount),
     );
 
     const [emailSnap, nameSnap] = await Promise.all([
@@ -256,7 +256,26 @@ export async function searchUsers(searchTerm: string): Promise<User[]> {
     processDocs(emailSnap);
     processDocs(nameSnap);
 
-    return Array.from(userMap.values());
+    return Array.from(userMap.values())
+      .sort((a, b) => {
+        const aName = a.displayName.toLowerCase();
+        const bName = b.displayName.toLowerCase();
+        const aEmail = a.email.toLowerCase();
+        const bEmail = b.email.toLowerCase();
+
+        const aExactName = aName.startsWith(term);
+        const bExactName = bName.startsWith(term);
+        const aExactEmail = aEmail.startsWith(term);
+        const bExactEmail = bEmail.startsWith(term);
+
+        if ((aExactName || aExactEmail) && !(bExactName || bExactEmail))
+          return -1;
+        if (!(aExactName || aExactEmail) && (bExactName || bExactEmail))
+          return 1;
+
+        return aName.localeCompare(bName);
+      })
+      .slice(0, limitCount);
   } catch {
     return [];
   }
