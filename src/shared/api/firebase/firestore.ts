@@ -412,7 +412,7 @@ export async function searchUsers(
 
     const processDocs = (snap: QuerySnapshot<DocumentData, DocumentData>) => {
       snap.docs.forEach((doc) => {
-        const data = doc.data() as User;
+        const { id: _ignored, ...data } = doc.data() as any;
 
         const isValid =
           data.displayName && data.email && (data.createdAt || data.lastSeen);
