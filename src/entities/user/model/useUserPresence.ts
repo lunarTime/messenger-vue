@@ -15,7 +15,7 @@ export function useUserPresence() {
             if (userStore.userId) {
                 setUserOnlineStatus(userStore.userId, true)
             }
-        }, 60000)
+        }, 30000)
     }
 
     const stopHeartbeat = () => {
