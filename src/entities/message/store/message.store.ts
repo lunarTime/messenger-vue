@@ -118,7 +118,7 @@ export const useMessageStore = defineStore("messages", () => {
             if (chatMembers.length > 0) {
               const otherUserId = chatMembers[0];
 
-              if (!statusUnsubscribers.value.has(msg.id)) {
+              if (otherUserId && !statusUnsubscribers.value.has(msg.id)) {
                 const unsub = subscribeToMessageDeliveryStatus(
                   msg.id,
                   chatId,
