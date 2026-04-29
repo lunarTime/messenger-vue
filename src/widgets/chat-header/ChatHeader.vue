@@ -3,9 +3,11 @@
     import { useChatStore } from '@/entities/chat/store/chat.store'
     import { subscribeToUser } from '@/shared/api/firebase/firestore'
     import type { User } from '@/shared/types/user'
+    import { useGlobalNow } from '@/shared/composables/useGlobalNow'
     import Avatar from 'primevue/avatar'
 
     const chatStore = useChatStore()
+    const now = useGlobalNow(30000)
 
     let unsubscribeUser: (() => void) | null = null
     const otherUser = ref<User | null>(null)
@@ -20,7 +22,18 @@
         return chatStore.otherUserName(chat)
     })
 
-    const isOnline = computed(() => otherUser.value?.isOnline ?? false)
+    const isOnline = computed(() => {
+        if (!otherUser.value) return false
+        if (!otherUser.value.isOnline) return false
+
+        if (otherUser.value.lastSeen) {
+            const lastSeenMillis = otherUser.value.lastSeen.toMillis()
+            const diff = now.value - lastSeenMillis
+            return diff < 120000
+        }
+
+        return false
+    })
 
     const otherUserId = computed(() => {
         const chat = chatStore.activeChat
