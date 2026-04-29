@@ -13,6 +13,8 @@ import {
   setMessageDeliveryStatus,
   markChatAsRead,
   subscribeToMessageDeliveryStatus,
+  subscribeToChatMemberMeta,
+  subscribeToChatMeta,
 } from "@/shared/api/firebase/firestore";
 import type { Message, MessageStatus } from "@/shared/types/message";
 import type { Unsubscribe } from "firebase/firestore";
@@ -27,6 +29,8 @@ export const useMessageStore = defineStore("messages", () => {
   const messageStatuses = ref<Map<string, MessageStatus>>(new Map());
   const statusUnsubscribers = ref<Map<string, Unsubscribe>>(new Map());
   const deletedForUnsubscribers = ref<Map<string, Unsubscribe>>(new Map());
+  const unsubscribeMemberMeta = ref<Unsubscribe | null>(null);
+  const unsubscribeChatMeta = ref<Unsubscribe | null>(null);
 
   watch(
     () => chatStore.activeChatId,
@@ -36,6 +40,15 @@ export const useMessageStore = defineStore("messages", () => {
         unsubscribeMessages.value = null;
       }
 
+      if (unsubscribeMemberMeta.value) {
+        unsubscribeMemberMeta.value();
+        unsubscribeMemberMeta.value = null;
+      }
+      if (unsubscribeChatMeta.value) {
+        unsubscribeChatMeta.value();
+        unsubscribeChatMeta.value = null;
+      }
+
       statusUnsubscribers.value.forEach((unsub) => unsub());
       statusUnsubscribers.value.clear();
       messageStatuses.value.clear();
@@ -43,6 +56,34 @@ export const useMessageStore = defineStore("messages", () => {
 
       if (newChatId && !newChatId.startsWith("temp_")) {
         loadMessages(newChatId);
+
+        const myId = userStore.userId;
+        if (myId) {
+          let lastClearedAtMillis: number | null = null;
+          let lastClearedForAllMillis: number | null = null;
+
+          unsubscribeMemberMeta.value = subscribeToChatMemberMeta(
+            newChatId,
+            myId,
+            (meta) => {
+              const millis = meta.clearedAt ? meta.clearedAt.toMillis() : null;
+              if (millis !== lastClearedAtMillis) {
+                lastClearedAtMillis = millis;
+                loadMessages(newChatId);
+              }
+            },
+          );
+
+          unsubscribeChatMeta.value = subscribeToChatMeta(newChatId, (meta) => {
+            const millis = meta.clearedAtForAll
+              ? meta.clearedAtForAll.toMillis()
+              : null;
+            if (millis !== lastClearedForAllMillis) {
+              lastClearedForAllMillis = millis;
+              loadMessages(newChatId);
+            }
+          });
+        }
       }
     },
   );
@@ -233,6 +274,14 @@ export const useMessageStore = defineStore("messages", () => {
     if (unsubscribeMessages.value) {
       unsubscribeMessages.value();
       unsubscribeMessages.value = null;
+    }
+    if (unsubscribeMemberMeta.value) {
+      unsubscribeMemberMeta.value();
+      unsubscribeMemberMeta.value = null;
+    }
+    if (unsubscribeChatMeta.value) {
+      unsubscribeChatMeta.value();
+      unsubscribeChatMeta.value = null;
     }
 
     statusUnsubscribers.value.forEach((unsub) => unsub());
