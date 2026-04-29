@@ -22,7 +22,7 @@ const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
 </script>
 
 <template>
-  <div class="sticky bottom-0 z-10 p-4">
+  <div class="sticky bottom-0 z-10">
     <Transition
       enter-active-class="transition-all duration-200 ease-out"
       enter-from-class="opacity-0 -translate-y-2"

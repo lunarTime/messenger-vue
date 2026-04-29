@@ -1,6 +1,6 @@
 <script setup lang="ts">
     import { ref, computed } from 'vue'
-    import { useAuthNavigation } from '@/shared/composables/useAuthNavigation'
+    import { useAuthNavigation } from '@/entities/user/model/useAuthNavigation'
     import { useTheme } from '@/shared/composables/useTheme'
     import { signInWithGoogle } from '@/shared/api/firebase/auth'
     import type { AuthType } from '@/shared/types/auth'

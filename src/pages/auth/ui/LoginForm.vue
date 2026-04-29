@@ -1,6 +1,6 @@
 <script setup lang="ts">
     import { reactive, ref } from 'vue'
-    import { useAuthNavigation } from '@/shared/composables/useAuthNavigation'
+    import { useAuthNavigation } from '@/entities/user/model/useAuthNavigation'
     import { loginWithEmail } from '@/shared/api/firebase/auth'
     import type { LoginFormData } from '@/shared/types/auth'
     import Button from 'primevue/button'

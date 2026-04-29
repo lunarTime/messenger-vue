@@ -1,5 +1,5 @@
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
-import { storage } from '@/app/providers/firebase'
+import { storage } from './index'
 
 export async function uploadFile(path: string, file: File): Promise<string> {
     const storageRef = ref(storage, path)

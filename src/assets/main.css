@@ -1,9 +1,11 @@
-@import 'tailwindcss';
-@import '@/assets/fonts.css';
+@import "tailwindcss";
+@import "@/assets/fonts.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 body,
 html {
-    font-family: 'Ysabeau', sans-serif;
-    font-size: 16px;
-    font-weight: 500;
+  font-family: "Ysabeau", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
 }
