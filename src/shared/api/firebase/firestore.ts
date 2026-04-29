@@ -7,11 +7,12 @@ import {
   updateDoc,
   setDoc,
   deleteDoc,
+  onSnapshot,
   query,
   where,
   orderBy,
   limit,
-  onSnapshot,
+  arrayRemove,
   serverTimestamp,
   type Unsubscribe,
   type QuerySnapshot,
@@ -36,6 +37,31 @@ export async function getUserById(userId: string): Promise<User | null> {
   } catch {
     return null;
   }
+}
+
+export function subscribeToChatMeta(
+  chatId: string,
+  callback: (meta: { clearedAtForAll: Timestamp | null }) => void,
+): Unsubscribe {
+  if (!chatId) {
+    callback({ clearedAtForAll: null });
+    return () => {};
+  }
+
+  return onSnapshot(
+    doc(db, "chats", chatId),
+    (snap) => {
+      if (!snap.exists()) {
+        callback({ clearedAtForAll: null });
+        return;
+      }
+      const data = snap.data() as any;
+      callback({
+        clearedAtForAll: (data.clearedAtForAll as Timestamp) || null,
+      });
+    },
+    () => callback({ clearedAtForAll: null }),
+  );
 }
 
 export async function updateUserProfile(
@@ -105,11 +131,13 @@ export async function getOrCreateDirectChat(
       setDoc(doc(db, "chats", chatRef.id, "members", userId1), {
         userId: userId1,
         unreadCount: 0,
+        isPinned: false,
         joinedAt: serverTimestamp(),
       }),
       setDoc(doc(db, "chats", chatRef.id, "members", userId2), {
         userId: userId2,
         unreadCount: 0,
+        isPinned: false,
         joinedAt: serverTimestamp(),
       }),
     ]);
@@ -118,6 +146,138 @@ export async function getOrCreateDirectChat(
   } catch (error) {
     throw error;
   }
+}
+
+export function subscribeToChatMemberMeta(
+  chatId: string,
+  userId: string,
+  callback: (meta: {
+    isPinned: boolean;
+    pinnedOrder: number | null;
+    clearedAt: Timestamp | null;
+  }) => void,
+): Unsubscribe {
+  if (!chatId || !userId) {
+    callback({ isPinned: false, pinnedOrder: null, clearedAt: null });
+    return () => {};
+  }
+
+  const ref = doc(db, "chats", chatId, "members", userId);
+
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) {
+        callback({ isPinned: false, pinnedOrder: null, clearedAt: null });
+        return;
+      }
+
+      const data = snap.data() as any;
+      callback({
+        isPinned: Boolean(data.isPinned),
+        pinnedOrder:
+          typeof data.pinnedOrder === "number" ? (data.pinnedOrder as number) : null,
+        clearedAt: (data.clearedAt as Timestamp) || null,
+      });
+    },
+    () => callback({ isPinned: false, pinnedOrder: null, clearedAt: null }),
+  );
+}
+
+export async function setChatPinned(
+  chatId: string,
+  userId: string,
+  isPinned: boolean,
+): Promise<void> {
+  if (!chatId || !userId) throw new Error("Invalid parameters");
+
+  const memberRef = doc(db, "chats", chatId, "members", userId);
+
+  if (isPinned) {
+    await setDoc(
+      memberRef,
+      {
+        userId,
+        isPinned: true,
+        pinnedAt: serverTimestamp() as Timestamp,
+      },
+      { merge: true },
+    );
+    return;
+  }
+
+  await setDoc(
+    memberRef,
+    {
+      userId,
+      isPinned: false,
+      pinnedAt: null,
+      pinnedOrder: null,
+    },
+    { merge: true },
+  );
+}
+
+export async function setChatPinnedOrder(
+  chatId: string,
+  userId: string,
+  pinnedOrder: number,
+): Promise<void> {
+  if (!chatId || !userId) throw new Error("Invalid parameters");
+  if (!Number.isFinite(pinnedOrder)) throw new Error("Invalid pinnedOrder");
+
+  await setDoc(
+    doc(db, "chats", chatId, "members", userId),
+    { userId, pinnedOrder },
+    { merge: true },
+  );
+}
+
+export async function leaveChat(chatId: string, userId: string): Promise<void> {
+  if (!chatId || !userId) throw new Error("Invalid parameters");
+
+  await Promise.allSettled([
+    updateDoc(doc(db, "chats", chatId), {
+      participants: arrayRemove(userId),
+      updatedAt: serverTimestamp(),
+    }),
+    deleteDoc(doc(db, "chats", chatId, "members", userId)),
+  ]);
+}
+
+export async function clearChatHistoryForMe(
+  chatId: string,
+  userId: string,
+): Promise<void> {
+  if (!chatId || !userId) throw new Error("Invalid parameters");
+
+  await setDoc(
+    doc(db, "chats", chatId, "members", userId),
+    {
+      userId,
+      clearedAt: serverTimestamp(),
+      unreadCount: 0,
+    },
+    { merge: true },
+  );
+}
+
+export async function clearChatHistoryForAll(
+  chatId: string,
+  userId: string,
+): Promise<void> {
+  if (!chatId || !userId) throw new Error("Invalid parameters");
+
+  await updateDoc(doc(db, "chats", chatId), {
+    clearedAtForAll: serverTimestamp(),
+    lastMessage: {
+      text: "",
+      senderId: "",
+      createdAt: serverTimestamp(),
+    },
+    updatedAt: serverTimestamp(),
+    clearedBy: userId,
+  });
 }
 
 export function subscribeToUserChats(
@@ -322,7 +482,7 @@ export function subscribeToChatMessages(
 
       if (currentUserId) {
         const deletedChecks = await Promise.allSettled(
-          messages.map(async (message) => {
+          filteredMessages.map(async (message) => {
             const deletedRef = doc(
               db,
               "chats",
@@ -348,7 +508,41 @@ export function subscribeToChatMessages(
           }
         });
 
-        filteredMessages = messages.filter((msg) => !deletedSet.has(msg.id));
+        filteredMessages = filteredMessages.filter((msg) => !deletedSet.has(msg.id));
+
+        try {
+          const chatSnap = await getDoc(doc(db, "chats", chatId));
+          const clearedAtForAll = chatSnap.exists()
+            ? ((chatSnap.data() as any).clearedAtForAll as
+                | Timestamp
+                | undefined)
+            : undefined;
+
+          if (clearedAtForAll) {
+            const cutoff = clearedAtForAll.toMillis();
+            filteredMessages = filteredMessages.filter((m) => {
+              if (!m.createdAt) return true;
+              return m.createdAt.toMillis() > cutoff;
+            });
+          }
+        } catch {}
+
+        try {
+          const memberSnap = await getDoc(
+            doc(db, "chats", chatId, "members", currentUserId),
+          );
+          const clearedAt = memberSnap.exists()
+            ? ((memberSnap.data() as any).clearedAt as Timestamp | undefined)
+            : undefined;
+
+          if (clearedAt) {
+            const cutoff = clearedAt.toMillis();
+            filteredMessages = filteredMessages.filter((m) => {
+              if (!m.createdAt) return true;
+              return m.createdAt.toMillis() > cutoff;
+            });
+          }
+        } catch {}
 
         snapshot.docChanges().forEach((change) => {
           if (change.type === "added") {
