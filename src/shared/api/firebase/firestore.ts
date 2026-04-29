@@ -18,7 +18,7 @@ import {
   type DocumentData,
   type Timestamp,
 } from "firebase/firestore";
-import { db } from "@/app/providers/firebase";
+import { db } from "./index";
 import type { Chat } from "@/shared/types/chat";
 import type { Message, MessageStatus } from "@/shared/types/message";
 import type { User } from "@/shared/types/user";

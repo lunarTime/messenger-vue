@@ -7,7 +7,7 @@ import {
     updateProfile
 } from 'firebase/auth'
 import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
-import { auth, db } from '@/app/providers/firebase'
+import { auth, db } from './index'
 import type { RegisterFormData } from '@/shared/types/auth'
 
 let isRegistering = false

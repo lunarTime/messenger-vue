@@ -1,7 +1,7 @@
 <script setup lang="ts">
     import { RouterView } from 'vue-router'
     import { useTheme } from '@/shared/composables/useTheme'
-    import { useUserPresence } from '@/shared/composables/useUserPresence'
+    import { useUserPresence } from '@/entities/user/model/useUserPresence'
     import AnimateBG from '@/shared/ui/AnimateBG.vue'
     import ConfirmPopup from 'primevue/confirmpopup'
     import Toast from 'primevue/toast'

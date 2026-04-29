@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth'
-import { auth } from '@/app/providers/firebase'
+import { auth } from '@/shared/api/firebase'
 import { getUserById, searchUsers, setUserOnlineStatus } from '@/shared/api/firebase/firestore'
 import { getIsRegistering } from '@/shared/api/firebase/auth'
 import type { User } from '@/shared/types/user'
