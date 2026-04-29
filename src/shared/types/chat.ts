@@ -13,6 +13,7 @@ export interface Chat {
     photoURL?: string
     description?: string
     lastMessage?: {
+        id?: string
         text: string
         senderId: string
         createdAt: Timestamp
