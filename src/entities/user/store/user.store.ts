@@ -62,7 +62,7 @@ export const useUserStore = defineStore('user', () => {
         isSearching.value = true
 
         try {
-            const results = await searchUsers(searchTerm)
+            const results = await searchUsers(searchTerm, 50)
 
             if (userId.value) {
                 searchResults.value = results.filter(user => user.id !== userId.value)
