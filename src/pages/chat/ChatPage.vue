@@ -60,6 +60,10 @@ onUnmounted(() => {
   border-radius: 0 !important;
 }
 
+:deep(.p-splitterpanel) {
+  outline: none !important;
+}
+
 :deep(.p-splitter-gutter) {
   position: relative;
   width: 1.5rem;
