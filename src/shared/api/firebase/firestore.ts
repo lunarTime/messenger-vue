@@ -219,7 +219,10 @@ export async function sendMessage(
   }
 }
 
-export async function searchUsers(searchTerm: string, limitCount: number = 50): Promise<User[]> {
+export async function searchUsers(
+  searchTerm: string,
+  limitCount: number = 50,
+): Promise<User[]> {
   if (!searchTerm?.trim() || searchTerm.length < 2) return [];
 
   try {
@@ -244,12 +247,24 @@ export async function searchUsers(searchTerm: string, limitCount: number = 50): 
       getDocs(qEmail),
       getDocs(qName),
     ]);
+
     const userMap = new Map<string, User>();
 
     const processDocs = (snap: QuerySnapshot<DocumentData, DocumentData>) => {
       snap.docs.forEach((doc) => {
-        const data = doc.data();
-        userMap.set(doc.id, { id: doc.id, ...data } as User);
+        const data = doc.data() as User;
+
+        const isValid =
+          data.displayName && data.email && (data.createdAt || data.lastSeen);
+
+        if (isValid) {
+          const emailKey = data.email.toLowerCase().trim();
+          const existing = userMap.get(emailKey);
+
+          if (!existing || (!existing.photoURL && data.photoURL)) {
+            userMap.set(emailKey, { id: doc.id, ...data } as User);
+          }
+        }
       });
     };
 
@@ -257,26 +272,10 @@ export async function searchUsers(searchTerm: string, limitCount: number = 50): 
     processDocs(nameSnap);
 
     return Array.from(userMap.values())
-      .sort((a, b) => {
-        const aName = a.displayName.toLowerCase();
-        const bName = b.displayName.toLowerCase();
-        const aEmail = a.email.toLowerCase();
-        const bEmail = b.email.toLowerCase();
-
-        const aExactName = aName.startsWith(term);
-        const bExactName = bName.startsWith(term);
-        const aExactEmail = aEmail.startsWith(term);
-        const bExactEmail = bEmail.startsWith(term);
-
-        if ((aExactName || aExactEmail) && !(bExactName || bExactEmail))
-          return -1;
-        if (!(aExactName || aExactEmail) && (bExactName || bExactEmail))
-          return 1;
-
-        return aName.localeCompare(bName);
-      })
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
       .slice(0, limitCount);
-  } catch {
+  } catch (error) {
+    console.error("Search error:", error);
     return [];
   }
 }
