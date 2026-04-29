@@ -24,6 +24,8 @@ type TemporaryChat = Omit<Chat, "createdAt" | "updatedAt" | "lastMessage"> & {
   };
 };
 
+type ChatLike = Pick<Chat, "type" | "participants" | "name" | "photoURL">;
+
 const toMillis = (value: MillisLike | null | undefined): number => {
   if (!value) return 0;
   try {
@@ -241,7 +243,7 @@ export const useChatStore = defineStore("chat", () => {
     }
   };
 
-  const otherUserName = (chat: Chat): string => {
+  const otherUserName = (chat: ChatLike): string => {
     if (chat.type === "group") {
       return chat.name || "Групповой чат";
     }
@@ -258,11 +260,11 @@ export const useChatStore = defineStore("chat", () => {
     return "Чат";
   };
 
-  const getChatDisplayName = (chat: Chat): string => {
+  const getChatDisplayName = (chat: ChatLike): string => {
     return otherUserName(chat);
   };
 
-  const getChatPhotoURL = (chat: Chat): string | null => {
+  const getChatPhotoURL = (chat: ChatLike): string | null => {
     if (chat.type === "group") {
       return chat.photoURL || null;
     }
@@ -280,7 +282,7 @@ export const useChatStore = defineStore("chat", () => {
     return null;
   };
 
-  const getOtherUser = (chat: Chat): User | null => {
+  const getOtherUser = (chat: ChatLike): User | null => {
     if (chat.type === "direct") {
       const otherUserId = chat.participants.find((id) => id !== myId.value);
 
