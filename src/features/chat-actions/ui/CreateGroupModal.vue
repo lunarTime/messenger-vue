@@ -69,14 +69,22 @@ const handleCreate = async () => {
     return;
 
   isCreating.value = true;
-
   try {
     let photoURL = "";
-
     if (groupPhotoFile.value) {
-      const path = `group-avatars/temp/${Date.now()}_${groupPhotoFile.value.name}`;
-
-      photoURL = await uploadFile(path, groupPhotoFile.value);
+      try {
+        const path = `group-avatars/temp/${Date.now()}_${groupPhotoFile.value.name}`;
+        photoURL = await uploadFile(path, groupPhotoFile.value);
+      } catch (uploadError) {
+        console.error("Storage upload failed (likely CORS):", uploadError);
+        toast.add({
+          severity: "warn",
+          summary: "Проблема с иконкой",
+          detail:
+            "Не удалось загрузить файл из-за настроек CORS. Группа будет создана с дефолтной иконкой.",
+          life: 5000,
+        });
+      }
     }
 
     const chatId = await createGroupChat(
@@ -172,6 +180,7 @@ const close = () => {
             choose-label="Загрузить"
             cancelLabel="Сбросить"
             severity="contrast"
+            file-label="sdfs"
           />
           <div v-if="groupPhotoFile" class="text-sm opacity-70">
             {{ fileSizeLabel }}
@@ -258,3 +267,9 @@ const close = () => {
     </template>
   </Dialog>
 </template>
+
+<style scoped>
+:deep(.p-fileupload-basic-content) {
+  flex-direction: column;
+}
+</style>
