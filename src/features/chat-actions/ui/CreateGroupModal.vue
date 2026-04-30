@@ -3,7 +3,7 @@ import { ref, computed } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { createGroupChat } from "@/shared/api/firebase/firestore";
-import { uploadFile } from "@/shared/api/firebase/storage";
+import { uploadToCloudinary } from "@/shared/api/cloudinary";
 import { useToast } from "primevue/usetoast";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
@@ -73,15 +73,14 @@ const handleCreate = async () => {
     let photoURL = "";
     if (groupPhotoFile.value) {
       try {
-        const path = `group-avatars/temp/${Date.now()}_${groupPhotoFile.value.name}`;
-        photoURL = await uploadFile(path, groupPhotoFile.value);
+        photoURL = await uploadToCloudinary(groupPhotoFile.value);
       } catch (uploadError) {
-        console.error("Storage upload failed (likely CORS):", uploadError);
+        console.error("Cloudinary upload failed:", uploadError);
         toast.add({
           severity: "warn",
           summary: "Проблема с иконкой",
           detail:
-            "Не удалось загрузить файл из-за настроек CORS. Группа будет создана с дефолтной иконкой.",
+            "Не удалось загрузить файл в Cloudinary. Группа будет создана с дефолтной иконкой.",
           life: 5000,
         });
       }
