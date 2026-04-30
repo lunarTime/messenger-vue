@@ -1,4 +1,23 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+type ChatRequest = {
+  text?: string;
+};
+
+type ChatResponse = {
+  rewrittenText?: string;
+  error?: string;
+};
+
+type HandlerReq = {
+  method?: string;
+  body?: ChatRequest;
+};
+
+type HandlerRes = {
+  setHeader: (key: string, value: string) => void;
+  status: (code: number) => HandlerRes;
+  json: (data: ChatResponse) => void;
+  end: () => void;
+};
 
 interface GigaChatAuthResponse {
   access_token: string;
@@ -18,7 +37,7 @@ interface GigaChatResponse {
   }[];
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: HandlerReq, res: HandlerRes) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
