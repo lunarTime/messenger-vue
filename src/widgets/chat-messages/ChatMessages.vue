@@ -16,6 +16,8 @@ import Textarea from "primevue/textarea";
 import Dialog from "primevue/dialog";
 import Button from "primevue/button";
 import Message from "primevue/message";
+import Avatar from "primevue/avatar";
+import { getAvatarColor } from "@/shared/utils/avatarColors";
 
 const confirm = useConfirm();
 const toast = useToast();
@@ -25,6 +27,30 @@ const userStore = useUserStore();
 
 const { editMessage, deleteMessageForMe, deleteMessageForAll } =
   useMessageActions();
+
+interface MessageGroup {
+  senderId: string;
+  messages: typeof messageStore.messages;
+}
+
+const groupedMessages = computed(() => {
+  const groups: MessageGroup[] = [];
+  let currentGroup: MessageGroup | null = null;
+
+  messageStore.messages.forEach((message) => {
+    if (currentGroup && currentGroup.senderId === message.senderId) {
+      currentGroup.messages.push(message);
+    } else {
+      currentGroup = {
+        senderId: message.senderId,
+        messages: [message],
+      };
+      groups.push(currentGroup);
+    }
+  });
+
+  return groups;
+});
 
 const containerRef = ref<HTMLElement | null>(null);
 const isUserScrolling = ref(false);
@@ -246,16 +272,79 @@ const handleDeleteForAll = (messageId: string) => {
       ref="containerRef"
       class="h-full overflow-y-auto overflow-x-hidden pr-2"
     >
-      <div class="flex flex-col gap-2">
-        <ChatMessageItem
-          v-for="message in messageStore.messages"
-          :key="message.id"
-          :message="message"
-          :current-user-id="userStore.userId!"
-          @edit="handleEdit"
-          @delete-for-me="handleDeleteForMe"
-          @delete-for-all="handleDeleteForAll"
-        />
+      <div class="flex flex-col gap-4">
+        <div
+          v-for="(group, groupIndex) in groupedMessages"
+          :key="group.senderId + groupIndex"
+          class="flex flex-col gap-1"
+        >
+          <div
+            class="flex gap-2 w-full"
+            :class="
+              group.senderId === userStore.userId
+                ? 'flex-row-reverse'
+                : 'flex-row'
+            "
+          >
+            <div
+              v-if="
+                chatStore.activeChat?.type === 'group' &&
+                group.senderId !== userStore.userId
+              "
+              class="w-fit shrink-0 relative"
+            >
+              <div class="sticky bottom-0 top-0 h-[2rem]">
+                <Avatar
+                  :image="
+                    chatStore.chatParticipants.get(group.senderId)?.photoURL ??
+                    undefined
+                  "
+                  :label="
+                    chatStore.chatParticipants.get(group.senderId)?.photoURL
+                      ? undefined
+                      : (
+                          chatStore.chatParticipants
+                            .get(group.senderId)
+                            ?.displayName?.charAt(0) || '?'
+                        ).toUpperCase()
+                  "
+                  :class="[
+                    chatStore.chatParticipants.get(group.senderId)?.photoURL
+                      ? undefined
+                      : getAvatarColor(group.senderId) + ' text-white!',
+                  ]"
+                  shape="circle"
+                  size="normal"
+                />
+              </div>
+            </div>
+
+            <div
+              class="flex flex-col gap-1 flex-1 min-w-0"
+              :class="
+                group.senderId === userStore.userId
+                  ? 'items-end'
+                  : 'items-start'
+              "
+            >
+              <ChatMessageItem
+                v-for="(message, index) in group.messages"
+                :key="message.id"
+                :message="message"
+                :current-user-id="userStore.userId!"
+                :is-group="chatStore.activeChat?.type === 'group'"
+                :show-sender-name="
+                  chatStore.activeChat?.type === 'group' &&
+                  group.senderId !== userStore.userId &&
+                  index === 0
+                "
+                @edit="handleEdit"
+                @delete-for-me="handleDeleteForMe"
+                @delete-for-all="handleDeleteForAll"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
