@@ -8,6 +8,7 @@ import ChatListItem from "@/widgets/chat-list/ui/ChatListItem.vue";
 import UserSearch from "@/widgets/chat-list/ui/ChatSearch.vue";
 import CurrentUser from "@/widgets/ui/CurrentUser.vue";
 import ScrollPanel from "primevue/scrollpanel";
+import Divider from "primevue/divider";
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
@@ -23,6 +24,15 @@ const getOtherUserId = (chat: Chat): string => {
   }
 
   return chat.participants.find((id) => id !== userStore.userId) || "";
+};
+
+const normalizeLastMessage = (message?: Chat["lastMessage"]) => {
+  if (!message?.text) return undefined;
+
+  return {
+    ...message,
+    text: message.text.length > 500 ? message.text.slice(0, 500) : message.text,
+  };
 };
 
 const pinnedChats = computed(() =>
@@ -88,14 +98,14 @@ const onPinnedDragOver = (chatId: string) => {
   >
     <UserSearch />
 
-    <ScrollPanel class="flex-1">
+    <ScrollPanel class="flex-1 h-0 w-full min-w-0 -mr-4">
       <div v-if="chatStore.visibleChats.length === 0" class="p-8 text-center">
         <i class="pi pi-comments text-4xl mb-4"></i>
         <p>Нет активных чатов</p>
         <p class="text-sm mt-2">Используйте поиск выше, чтобы начать общение</p>
       </div>
 
-      <div v-else class="flex flex-col gap-2">
+      <div v-else class="w-full min-w-0 overflow-hidden flex flex-col gap-2">
         <div v-if="pinnedChats.length" class="flex flex-col gap-2">
           <ChatListItem
             v-for="chat in pinnedChats"
@@ -104,8 +114,8 @@ const onPinnedDragOver = (chatId: string) => {
             :other-user-id="getOtherUserId(chat)"
             :active="chat.id === chatStore.activeChatId"
             :name="chatStore.otherUserName(chat)"
-            :last-message="chat.lastMessage"
-            :date="chat.updatedAt"
+            :last-message="normalizeLastMessage(chat.lastMessage)"
+            :date="chat.updatedAt ?? chat.lastMessage?.createdAt"
             :unread-count="unreadCounts[chat.id]"
             :open-context-chat-id="openContextChatId"
             @context-open="openContextChatId = $event"
@@ -128,9 +138,8 @@ const onPinnedDragOver = (chatId: string) => {
           />
         </div>
 
-        <div v-if="pinnedChats.length && unpinnedChats.length" class="my-1">
-          <div class="h-px bg-(--p-primary-color)/20 dark:bg-white/10" />
-        </div>
+        <Divider v-if="pinnedChats.length && unpinnedChats.length" class="my-1">
+        </Divider>
 
         <ChatListItem
           v-for="chat in unpinnedChats"
@@ -139,8 +148,8 @@ const onPinnedDragOver = (chatId: string) => {
           :other-user-id="getOtherUserId(chat)"
           :active="chat.id === chatStore.activeChatId"
           :name="chatStore.otherUserName(chat)"
-          :last-message="chat.lastMessage"
-          :date="chat.updatedAt"
+          :last-message="normalizeLastMessage(chat.lastMessage)"
+          :date="chat.updatedAt ?? chat.lastMessage?.createdAt"
           :unread-count="unreadCounts[chat.id]"
           :open-context-chat-id="openContextChatId"
           @context-open="openContextChatId = $event"
@@ -155,3 +164,19 @@ const onPinnedDragOver = (chatId: string) => {
     <CurrentUser />
   </div>
 </template>
+
+<style scoped>
+:deep(.p-divider-solid.p-divider-horizontal:before) {
+  border-block-start-color: color-mix(
+    in oklab,
+    var(--p-primary-color) 30%,
+    transparent
+  );
+}
+
+:deep(.p-scrollpanel-content) {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+</style>

@@ -20,7 +20,7 @@ import {
   type Timestamp,
 } from "firebase/firestore";
 import { db } from "./index";
-import type { Chat } from "@/shared/types/chat";
+import type { Chat, ChatMemberRole } from "@/shared/types/chat";
 import type { Message, MessageStatus } from "@/shared/types/message";
 import type { User } from "@/shared/types/user";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
@@ -148,6 +148,51 @@ export async function getOrCreateDirectChat(
   }
 }
 
+export async function createGroupChat(
+  creatorId: string,
+  name: string,
+  participants: string[],
+  photoURL?: string,
+): Promise<string> {
+  if (!creatorId || !name || !participants.length)
+    throw new Error("Invalid parameters");
+
+  const allParticipants = Array.from(new Set([...participants, creatorId]));
+
+  const chatRef = await addDoc(collection(db, "chats"), {
+    type: "group",
+    name,
+    photoURL: photoURL || null,
+    participants: allParticipants,
+    createdBy: creatorId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    lastMessage: {
+      text: "Группа создана",
+      senderId: creatorId,
+      createdAt: serverTimestamp(),
+    },
+  });
+
+  const memberTasks = allParticipants.map((userId) => {
+    return setDoc(doc(db, "chats", chatRef.id, "members", userId), {
+      userId,
+      role: userId === creatorId ? "admin" : "member",
+      unreadCount: 0,
+      isPinned: false,
+      joinedAt: serverTimestamp(),
+    });
+  });
+
+  await Promise.all(memberTasks);
+  return chatRef.id;
+}
+
+export async function deleteGroupChat(chatId: string): Promise<void> {
+  if (!chatId) throw new Error("chatId is required");
+  await deleteDoc(doc(db, "chats", chatId));
+}
+
 export function subscribeToChatMemberMeta(
   chatId: string,
   userId: string,
@@ -155,10 +200,16 @@ export function subscribeToChatMemberMeta(
     isPinned: boolean;
     pinnedOrder: number | null;
     clearedAt: Timestamp | null;
+    role: ChatMemberRole;
   }) => void,
 ): Unsubscribe {
   if (!chatId || !userId) {
-    callback({ isPinned: false, pinnedOrder: null, clearedAt: null });
+    callback({
+      isPinned: false,
+      pinnedOrder: null,
+      clearedAt: null,
+      role: "member",
+    });
     return () => {};
   }
 
@@ -168,7 +219,12 @@ export function subscribeToChatMemberMeta(
     ref,
     (snap) => {
       if (!snap.exists()) {
-        callback({ isPinned: false, pinnedOrder: null, clearedAt: null });
+        callback({
+          isPinned: false,
+          pinnedOrder: null,
+          clearedAt: null,
+          role: "member",
+        });
         return;
       }
 
@@ -176,11 +232,20 @@ export function subscribeToChatMemberMeta(
       callback({
         isPinned: Boolean(data.isPinned),
         pinnedOrder:
-          typeof data.pinnedOrder === "number" ? (data.pinnedOrder as number) : null,
+          typeof data.pinnedOrder === "number"
+            ? (data.pinnedOrder as number)
+            : null,
         clearedAt: (data.clearedAt as Timestamp) || null,
+        role: (data.role as ChatMemberRole) || "member",
       });
     },
-    () => callback({ isPinned: false, pinnedOrder: null, clearedAt: null }),
+    () =>
+      callback({
+        isPinned: false,
+        pinnedOrder: null,
+        clearedAt: null,
+        role: "member",
+      }),
   );
 }
 
@@ -366,6 +431,7 @@ export async function sendMessage(
 
     await updateDoc(doc(db, "chats", chatId), {
       lastMessage: {
+        id: messageId,
         text: sanitizedText,
         senderId,
         createdAt: serverTimestamp(),

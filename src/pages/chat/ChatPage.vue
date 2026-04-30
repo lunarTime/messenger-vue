@@ -25,7 +25,7 @@ onUnmounted(() => {
 <template>
   <div class="flex h-screen">
     <Splitter class="w-full">
-      <SplitterPanel class="max-w-3xl min-w-fit">
+      <SplitterPanel class="max-w-3xl min-w-100">
         <ChatList />
       </SplitterPanel>
       <SplitterPanel class="flex min-w-80">
@@ -58,6 +58,10 @@ onUnmounted(() => {
   backdrop-filter: blur(100px);
   border: none !important;
   border-radius: 0 !important;
+}
+
+:deep(.p-splitterpanel) {
+  outline: none !important;
 }
 
 :deep(.p-splitter-gutter) {
