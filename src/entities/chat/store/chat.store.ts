@@ -48,6 +48,7 @@ export const useChatStore = defineStore("chat", () => {
   const memberMetaSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
   const pinnedMap = ref<Map<string, boolean>>(new Map());
   const pinnedOrderMap = ref<Map<string, number>>(new Map());
+  const roleMap = ref<Map<string, string>>(new Map());
 
   const myId = computed(() => userStore.userId);
 
@@ -109,6 +110,7 @@ export const useChatStore = defineStore("chat", () => {
             memberMetaSubscriptions.value.delete(chatId);
             pinnedMap.value.delete(chatId);
             pinnedOrderMap.value.delete(chatId);
+            roleMap.value.delete(chatId);
           }
         });
 
@@ -117,6 +119,7 @@ export const useChatStore = defineStore("chat", () => {
 
           const unsub = subscribeToChatMemberMeta(chat.id, myIdVal, (meta) => {
             pinnedMap.value.set(chat.id, meta.isPinned);
+            roleMap.value.set(chat.id, meta.role);
             if (typeof meta.pinnedOrder === "number") {
               pinnedOrderMap.value.set(chat.id, meta.pinnedOrder);
             } else {
@@ -315,6 +318,14 @@ export const useChatStore = defineStore("chat", () => {
     return pinnedMap.value.get(chatId) ?? false;
   };
 
+  const getMyRole = (chatId: string): string => {
+    return roleMap.value.get(chatId) || "member";
+  };
+
+  const isChatAdmin = (chatId: string): boolean => {
+    return getMyRole(chatId) === "admin";
+  };
+
   const reorderPinnedChats = async (
     orderedPinnedChatIds: string[],
   ): Promise<void> => {
@@ -331,6 +342,11 @@ export const useChatStore = defineStore("chat", () => {
     });
 
     await Promise.all(tasks);
+  };
+
+  const getParticipantCount = (chatId: string): number => {
+    const chat = chats.value.find((c) => c.id === chatId);
+    return chat?.participants.length || 0;
   };
 
   return {
@@ -350,6 +366,9 @@ export const useChatStore = defineStore("chat", () => {
     getChatPhotoURL,
     getOtherUser,
     isChatPinned,
+    getMyRole,
+    isChatAdmin,
+    getParticipantCount,
     reorderPinnedChats,
     cleanup,
   };
