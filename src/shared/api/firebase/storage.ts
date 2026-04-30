@@ -22,7 +22,7 @@ export async function uploadUserAvatar(userId: string, file: File): Promise<stri
 }
 
 export async function uploadChatImage(chatId: string, file: File): Promise<string> {
-    const path = `chats/${chatId}/${Date.now()}_${file.name}`
+    const path = `group-avatars/${chatId}/${Date.now()}_${file.name}`
 
     return await uploadFile(path, file)
 }
