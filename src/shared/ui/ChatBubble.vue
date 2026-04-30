@@ -12,6 +12,7 @@ const props = defineProps<{
   createdAt: Timestamp | null;
   edited?: boolean;
   deliveryStatus?: MessageStatus;
+  senderName?: string;
 }>();
 
 const isOutgoing = computed(() => props.variant === "outgoing");
@@ -43,8 +44,14 @@ const deliveryIcon = computed(() => {
 <template>
   <div :class="bubbleClasses">
     <template v-if="!deleted">
-      <div class="flex flex-col gap-1">
-        <div class="text-sm md:text-base break-all">
+      <div class="flex flex-col gap-0.5">
+        <div
+          v-if="senderName && !isOutgoing"
+          class="text-xs font-bold text-(--p-primary-color) mb-0.5"
+        >
+          {{ senderName }}
+        </div>
+        <div class="text-sm md:text-base wrap-break-word">
           {{ text }}
         </div>
 
