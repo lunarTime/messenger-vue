@@ -17,7 +17,7 @@ import { compressImage } from "@/shared/lib/image/compressImage";
 import type { User } from "@/shared/types/user";
 import { formatFileSize } from "@/shared/lib/image/formatFileSize";
 
-const props = defineProps<{
+defineProps<{
   visible: boolean;
 }>();
 
