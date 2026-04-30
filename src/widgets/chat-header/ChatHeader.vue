@@ -9,6 +9,7 @@ import type { User } from "@/shared/types/user";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
 import { useUserStore } from "@/entities/user/store/user.store";
 import Avatar from "primevue/avatar";
+import { getAvatarColor } from "@/shared/utils/avatarColors";
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
@@ -19,43 +20,94 @@ let unsubscribeTyping: (() => void) | null = null;
 const otherUser = ref<User | null>(null);
 const typingUsers = ref<string[]>([]);
 
-const chatName = computed(() => {
-  const chat = chatStore.activeChat;
+const chat = computed(() => chatStore.activeChat);
+const isGroup = computed(() => chat.value?.type === "group");
 
-  if (!chat) {
+const avatarBgColor = computed(() => {
+  if (isGroup.value) {
+    return getAvatarColor(chat.value?.id || "");
+  }
+
+  return getAvatarColor(otherUserId.value || "");
+});
+
+const chatName = computed(() => {
+  if (!chat.value) {
     return "";
   }
 
-  return chatStore.otherUserName(chat);
+  return chatStore.otherUserName(chat.value);
 });
 
 const isOnline = computed(() => {
+  if (isGroup.value) return false;
   if (!otherUser.value) return false;
   if (!otherUser.value.isOnline) return false;
 
   if (otherUser.value.lastSeen) {
     const lastSeenMillis = otherUser.value.lastSeen.toMillis();
     const diff = now.value - lastSeenMillis;
+
     return diff < 120000;
   }
 
   return false;
 });
 
-const otherUserId = computed(() => {
-  const chat = chatStore.activeChat;
+const participantCount = computed(() => {
+  if (!chat.value) return 0;
 
-  if (!chat || chat.type !== "direct") {
+  return chatStore.getParticipantCount(chat.value.id);
+});
+
+const otherUserId = computed(() => {
+  if (!chat.value || chat.value.type !== "direct") {
     return null;
   }
 
-  return chatStore.getOtherUser(chat)?.id || null;
+  return chatStore.getOtherUser(chat.value)?.id || null;
 });
 
 const isTyping = computed(() => {
+  if (isGroup.value) return typingUsers.value.length > 0;
   const otherId = otherUserId.value;
   if (!otherId) return false;
   return typingUsers.value.includes(otherId);
+});
+
+const typingText = computed(() => {
+  if (!isTyping.value) return "";
+
+  if (isGroup.value) {
+    if (typingUsers.value.length === 1) {
+      const userId = typingUsers.value[0] as string;
+      const user = chatStore.chatParticipants.get(userId);
+
+      return `${user?.displayName || "Кто-то"} печатает...`;
+    }
+
+    return "Несколько человек печатают...";
+  }
+
+  return "печатает...";
+});
+
+const subtitleText = computed(() => {
+  if (isTyping.value) return typingText.value;
+
+  if (isGroup.value) {
+    const count = participantCount.value;
+
+    return `${count} ${count === 1 ? "участник" : count < 5 ? "участника" : "участников"}`;
+  }
+
+  return isOnline.value ? "онлайн" : "не в сети";
+});
+
+const getChatPhotoURL = computed(() => {
+  if (isGroup.value) return chat.value?.photoURL || null;
+
+  return otherUser.value?.photoURL || null;
 });
 
 const setupUserSubscription = () => {
@@ -114,19 +166,20 @@ onUnmounted(() => {
           icon="pi pi-arrow-left"
           size="small"
           title="Закрыть чат"
-          class="text-white!"
         />
         <Avatar
-          :image="otherUser?.photoURL ?? undefined"
+          :image="getChatPhotoURL ?? undefined"
           :label="
-            otherUser?.photoURL ? undefined : chatName.charAt(0).toUpperCase()
-          "
-          :class="
-            otherUser?.photoURL
+            getChatPhotoURL || isGroup
               ? undefined
-              : 'bg-(--p-primary-color)! text-white!'
+              : chatName.charAt(0).toUpperCase()
           "
-          shape="circle"
+          :icon="!getChatPhotoURL && isGroup ? 'pi pi-users' : undefined"
+          :class="[
+            getChatPhotoURL ? undefined : avatarBgColor + ' text-white!',
+            isGroup ? 'rounded-xl!' : '',
+          ]"
+          :shape="isGroup ? 'square' : 'circle'"
           size="large"
         />
         <div
@@ -141,15 +194,12 @@ onUnmounted(() => {
           <h2 class="text-lg font-semibold">
             {{ chatName }}
           </h2>
-          <span
-            v-if="isTyping"
-            class="text-xs font-normal text-(--p-primary-color) animate-pulse"
-          >
-            печатает...
-          </span>
         </div>
-        <p class="text-sm opacity-70">
-          {{ isTyping ? "печатает..." : isOnline ? "онлайн" : "не в сети" }}
+        <p
+          class="text-sm opacity-70"
+          :class="{ 'text-(--p-primary-color) animate-pulse': isTyping }"
+        >
+          {{ subtitleText }}
         </p>
       </div>
     </div>
