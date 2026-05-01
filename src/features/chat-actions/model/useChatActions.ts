@@ -1,17 +1,20 @@
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import { useUserStore } from "@/entities/user/store/user.store";
+import { useChatStore } from "@/entities/chat/store/chat.store";
 import {
   clearChatHistoryForAll,
   clearChatHistoryForMe,
   leaveChat,
   setChatPinned,
+  removeGroupMember,
 } from "@/shared/api/firebase/firestore";
 
 export function useChatActions() {
   const confirm = useConfirm();
   const toast = useToast();
   const userStore = useUserStore();
+  const chatStore = useChatStore();
 
   const requireMyId = (): string => {
     const myId = userStore.userId;
@@ -36,6 +39,7 @@ export function useChatActions() {
       acceptClass: "p-button-danger",
       accept: async () => {
         await leaveChat(chatId, myId);
+        chatStore.closeActiveChat();
         toast.add({
           severity: "success",
           summary: "Готово",
@@ -102,11 +106,34 @@ export function useChatActions() {
       acceptLabel: "Выйти",
       acceptClass: "p-button-danger",
       accept: async () => {
-        await leaveChat(chatId, myId);
+        await leaveChat(chatId, myId, true);
+        chatStore.closeActiveChat();
         toast.add({
           severity: "success",
           summary: "Готово",
           detail: "Вы покинули группу",
+          life: 2500,
+        });
+      },
+    });
+  };
+
+  const removeMember = async (chatId: string, userId: string) => {
+    const myId = requireMyId();
+
+    confirm.require({
+      header: "Исключить участника",
+      message: "Вы уверены, что хотите исключить этого участника из группы?",
+      icon: "pi pi-exclamation-triangle",
+      rejectLabel: "Отмена",
+      acceptLabel: "Исключить",
+      acceptClass: "p-button-danger",
+      accept: async () => {
+        await removeGroupMember(chatId, userId, myId);
+        toast.add({
+          severity: "success",
+          summary: "Готово",
+          detail: "Участник исключен",
           life: 2500,
         });
       },
@@ -128,6 +155,7 @@ export function useChatActions() {
           "@/shared/api/firebase/firestore"
         );
         await deleteGroupChat(chatId);
+        chatStore.closeActiveChat();
         toast.add({
           severity: "success",
           summary: "Готово",
@@ -144,6 +172,7 @@ export function useChatActions() {
     clearHistoryForMe,
     clearHistoryForAll,
     leaveGroup,
+    removeMember,
     deleteGroup,
   };
 }
