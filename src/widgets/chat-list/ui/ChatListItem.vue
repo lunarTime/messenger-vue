@@ -111,8 +111,10 @@ const displayDate = useTimeAgo(props.date ?? null);
 const isPinned = computed(() => chatStore.isChatPinned(props.chatId));
 const isLastOutgoing = computed(() => {
   const myId = userStore.userId;
+
   if (!myId) return false;
   if (!props.lastMessage) return false;
+
   return props.lastMessage.senderId === myId;
 });
 
@@ -318,7 +320,7 @@ const onContextMenu = (event: MouseEvent) => {
           </template>
 
           <Badge
-            v-else-if="unreadCount && unreadCount > 0"
+            v-if="unreadCount && Number(unreadCount) > 0"
             :value="unreadCount"
             severity="contrast"
             size="small"
