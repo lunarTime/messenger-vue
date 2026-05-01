@@ -19,6 +19,7 @@ import {
   type DocumentData,
   type Timestamp,
   arrayUnion,
+  increment,
 } from "firebase/firestore";
 import { db } from "./index";
 import type { Chat, ChatMemberRole } from "@/shared/types/chat";
@@ -216,6 +217,16 @@ export async function sendSystemMessage(
       "lastMessage.createdAt": serverTimestamp(),
     });
 
+    const chatDoc = await getDoc(doc(db, "chats", chatId));
+
+    if (chatDoc.exists()) {
+      const participants = (chatDoc.data() as Chat).participants || [];
+      const tasks = participants
+        .filter((id) => id !== actorId)
+        .map((id) => incrementUnreadCount(chatId, id));
+      await Promise.allSettled(tasks);
+    }
+
     return messageRef.id;
   } catch (error) {
     console.error("Failed to send system message:", error);
@@ -252,7 +263,7 @@ export async function createGroupChat(
   const memberTasks = allParticipants.map((userId) => {
     return setDoc(doc(db, "chats", chatRef.id, "members", userId), {
       userId,
-      role: userId === creatorId ? "admin" : "member",
+      role: userId === creatorId ? "owner" : "member",
       unreadCount: 0,
       isPinned: false,
       joinedAt: serverTimestamp(),
@@ -535,10 +546,23 @@ export function subscribeToUserChats(
   return onSnapshot(
     q,
     (snapshot) => {
-      const chats = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Chat[];
+      const chats = snapshot.docs.map((doc) => {
+        const data = doc.data();
+
+        return {
+          id: doc.id,
+          participants: data.participants ?? [],
+          type: data.type ?? "direct",
+          name: data.name ?? null,
+          photoURL: data.photoURL ?? null,
+          createdBy: data.createdBy ?? null,
+          adminIds: data.adminIds ?? null,
+          updatedAt: data.updatedAt ?? null,
+          lastMessage: data.lastMessage ?? null,
+          createdAt: data.createdAt ?? null,
+        } as Chat;
+      });
+
       callback(chats);
     },
     () => {
@@ -588,17 +612,26 @@ export async function sendMessage(
         .filter((participantId) => participantId !== senderId)
         .map(async (participantId) => {
           try {
-            await setMessageDeliveryStatus(
-              messageId,
-              chatId,
-              participantId,
-              "sent",
+            await Promise.all([
+              setMessageDeliveryStatus(
+                messageId,
+                chatId,
+                participantId,
+                "sent",
+              ),
+              incrementUnreadCount(chatId, participantId),
+            ]);
+          } catch (err) {
+            console.error(
+              `Failed to notify participant ${participantId}:`,
+              err,
             );
-            await incrementUnreadCount(chatId, participantId);
-          } catch {}
+          }
         });
 
-      await Promise.allSettled(tasks);
+      for (const task of tasks) {
+        await task;
+      }
     }
 
     await updateDoc(doc(db, "chats", chatId), {
@@ -917,21 +950,17 @@ export async function incrementUnreadCount(
 
   try {
     const chatMemberRef = doc(db, "chats", chatId, "members", userId);
-    const chatMemberDoc = await getDoc(chatMemberRef);
-
-    if (chatMemberDoc.exists()) {
-      const currentCount = (chatMemberDoc.data().unreadCount || 0) as number;
-      await updateDoc(chatMemberRef, {
-        unreadCount: currentCount + 1,
-      });
-    } else {
-      await setDoc(chatMemberRef, {
-        userId,
-        unreadCount: 1,
-        joinedAt: serverTimestamp(),
-      });
-    }
-  } catch {}
+    await setDoc(
+      chatMemberRef,
+      {
+        unreadCount: increment(1),
+        lastMessageAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  } catch (error) {
+    console.error("Error incrementing unread count:", error);
+  }
 }
 
 export function subscribeToChatMember(
@@ -960,6 +989,77 @@ export function subscribeToChatMember(
       callback(0);
     },
   );
+}
+
+export function subscribeToUnreadCount(
+  chatId: string,
+  userId: string,
+  callback: (count: number) => void,
+): Unsubscribe {
+  if (!chatId || !userId) {
+    callback(0);
+    return () => {};
+  }
+
+  let lastReadAt: Timestamp | null = null;
+  let unsubMessages: Unsubscribe | null = null;
+
+  const resubMessages = () => {
+    unsubMessages?.();
+
+    if (!lastReadAt) {
+      callback(0);
+      unsubMessages = null;
+      return;
+    }
+
+    const messagesRef = collection(db, "chats", chatId, "messages");
+    const q = query(
+      messagesRef,
+      where("createdAt", ">", lastReadAt),
+      orderBy("createdAt", "asc"),
+    );
+
+    unsubMessages = onSnapshot(
+      q,
+      (snap) => {
+        const count = snap.docs.filter(
+          (d) => d.data().senderId !== userId && !d.data().isDeleted,
+        ).length;
+        callback(count);
+      },
+      () => callback(0),
+    );
+  };
+
+  const memberRef = doc(db, "chats", chatId, "members", userId);
+  const unsubMember = onSnapshot(
+    memberRef,
+    (snap) => {
+      if (!snap.exists()) {
+        lastReadAt = null;
+        unsubMessages?.();
+        unsubMessages = null;
+        callback(0);
+        return;
+      }
+      const data = snap.data();
+      const newLastReadAt = (data.lastReadAt as Timestamp | null) ?? null;
+      const changed = newLastReadAt?.toMillis() !== lastReadAt?.toMillis();
+      lastReadAt = newLastReadAt;
+      if (changed || unsubMessages === null) {
+        resubMessages();
+      }
+    },
+    () => {
+      resubMessages();
+    },
+  );
+
+  return () => {
+    unsubMember();
+    unsubMessages?.();
+  };
 }
 
 export async function setMessageDeliveryStatus(
