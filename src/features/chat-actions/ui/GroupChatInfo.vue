@@ -43,8 +43,8 @@ const sortedMembers = computed(() => {
   return [...members.value].sort((a, b) => {
     if (a.userId === chat.value?.createdBy) return -1;
     if (b.userId === chat.value?.createdBy) return 1;
-    if (a.role === "admin" && b.role !== "admin") return -1;
-    if (a.role !== "admin" && b.role === "admin") return 1;
+    if ((a.role === "owner" || a.role === "admin") && b.role === "member") return -1;
+    if (a.role === "member" && (b.role === "owner" || b.role === "admin")) return 1;
 
     const nameA = participantsData.value.get(a.userId)?.displayName || "";
     const nameB = participantsData.value.get(b.userId)?.displayName || "";

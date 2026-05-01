@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, computed } from "vue";
+import { ref, watch, nextTick, onMounted, computed, provide } from "vue";
 import { useScroll, useThrottleFn } from "@vueuse/core";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
@@ -19,6 +19,7 @@ import Button from "primevue/button";
 import Message from "primevue/message";
 import Avatar from "primevue/avatar";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
+import { markChatAsRead } from "@/shared/api/firebase/firestore";
 
 const confirm = useConfirm();
 const toast = useToast();
@@ -113,6 +114,7 @@ const groupedMessages = computed(() => {
 });
 
 const containerRef = ref<HTMLElement | null>(null);
+provide("chatScrollContainer", containerRef);
 const isUserScrolling = ref(false);
 const editDialogVisible = ref(false);
 const editingMessageId = ref<string | null>(null);
@@ -159,6 +161,10 @@ watch(
     if (newLength > oldLength) {
       const lastMessage = messageStore.messages[newLength - 1];
 
+      if (chatStore.activeChatId && userStore.userId) {
+        await markChatAsRead(chatStore.activeChatId, userStore.userId);
+      }
+
       if (lastMessage?.senderId === userStore.userId || arrivedState.bottom) {
         await scrollToBottom(lastMessage?.senderId === userStore.userId);
       }
@@ -171,10 +177,15 @@ watch(
   async (newChatId, oldChatId) => {
     if (!newChatId || newChatId === oldChatId) return;
 
+    if (userStore.userId) {
+      await markChatAsRead(newChatId, userStore.userId);
+    }
+
     isUserScrolling.value = false;
 
     await nextTick();
     await new Promise((resolve) => setTimeout(resolve, 100));
+
     await scrollToBottom(false);
   },
   { immediate: true },
@@ -336,13 +347,16 @@ const handleDeleteForAll = (messageId: string) => {
           :key="dateGroup.date"
           class="flex flex-col gap-4"
         >
+          <!-- Sticky Date Header -->
           <div
-            class="sticky top-2 z-20 flex justify-center pointer-events-none"
+            class="sticky top-2 z-20 flex justify-center pointer-events-none mb-2"
           >
             <div
-              class="px-2 py-0.5 rounded-full backdrop-blur-md bg-(--p-primary-color)/30 leading-0 pointer-events-auto"
+              class="px-3 py-1 rounded-full bg-surface-0/70 dark:bg-surface-900/70 backdrop-blur-md border border-surface-200/50 dark:border-surface-700/50 shadow-sm pointer-events-auto"
             >
-              <span class="text-sm">
+              <span
+                class="text-[11px] font-bold text-surface-600 dark:text-surface-400 uppercase tracking-wider"
+              >
                 {{ dateGroup.date }}
               </span>
             </div>

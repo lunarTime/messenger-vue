@@ -24,12 +24,13 @@ export function useMessageInput() {
   const canSendTypingStatus = computed(() =>
     Boolean(chatStore.activeChatId && userStore.userId),
   );
+
   const charactersRemaining = computed(
     () => VALIDATION_CONFIG.MESSAGE.MAX_LENGTH - message.value.length,
   );
-  const showCharacterCount = computed(
-    () => message.value.length > VALIDATION_CONFIG.MESSAGE.MAX_LENGTH * 0,
-  );
+
+  const showCharacterCount = computed(() => message.value.length > 0);
+
   const isNearLimit = computed(() => charactersRemaining.value < 100);
   const isAtLimit = computed(() => charactersRemaining.value <= 0);
 
@@ -38,11 +39,8 @@ export function useMessageInput() {
 
     try {
       await setTypingStatus(chatStore.activeChatId!, userStore.userId!, status);
-
       isTyping.value = status;
-    } catch (err) {
-      console.error("Ошибка обновления статуса печати:", err);
-    }
+    } catch {}
   };
 
   watch(message, (newValue) => {
@@ -51,13 +49,10 @@ export function useMessageInput() {
     if (newValue.length > VALIDATION_CONFIG.MESSAGE.MAX_LENGTH) {
       message.value = newValue.slice(0, VALIDATION_CONFIG.MESSAGE.MAX_LENGTH);
       error.value = "Достигнут максимальный размер сообщения";
-
       return;
     }
 
-    if (!canSendTypingStatus.value) {
-      return;
-    }
+    if (!canSendTypingStatus.value) return;
 
     const hasText = newValue.trim().length > 0;
 
@@ -82,9 +77,7 @@ export function useMessageInput() {
     () => chatStore.activeChatId,
     (newChatId, oldChatId) => {
       if (oldChatId && isTyping.value && userStore.userId) {
-        setTypingStatus(oldChatId, userStore.userId, false).catch(
-          console.error,
-        );
+        setTypingStatus(oldChatId, userStore.userId, false).catch(() => {});
       }
 
       isTyping.value = false;
@@ -101,9 +94,7 @@ export function useMessageInput() {
 
   watch(message, (val) => {
     const id = chatStore.activeChatId;
-
     if (!id) return;
-
     draftStore.setDraft(id, val);
   });
 
@@ -119,9 +110,7 @@ export function useMessageInput() {
   const sendMessage = async (): Promise<void> => {
     const trimmedMessage = message.value.trim();
 
-    if (!trimmedMessage || isSending.value || !chatStore.activeChat) {
-      return;
-    }
+    if (!trimmedMessage || isSending.value || !chatStore.activeChat) return;
 
     const rateLimitKey = `send-message:${userStore.userId}`;
     const { MAX_REQUESTS, WINDOW_MS } = VALIDATION_CONFIG.MESSAGE.RATE_LIMIT;
@@ -133,7 +122,6 @@ export function useMessageInput() {
       })
     ) {
       error.value = "Слишком много сообщений. Подождите немного.";
-
       return;
     }
 
@@ -141,7 +129,6 @@ export function useMessageInput() {
 
     if (!validation.success) {
       error.value = validation.error;
-
       return;
     }
 
@@ -151,7 +138,6 @@ export function useMessageInput() {
 
     if (!sanitized) {
       error.value = "Сообщение пустое после обработки";
-
       return;
     }
 
@@ -166,15 +152,12 @@ export function useMessageInput() {
       await messageStore.sendMessage(sanitized);
 
       const id = chatStore.activeChatId;
-
       message.value = "";
 
       if (id) {
         draftStore.clearDraft(id);
       }
-    } catch (err) {
-      console.error("Ошибка отправки сообщения:", err);
-
+    } catch {
       error.value = "Не удалось отправить сообщение. Попробуйте ещё раз.";
     } finally {
       isSending.value = false;
@@ -184,7 +167,6 @@ export function useMessageInput() {
   const handleKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-
       sendMessage();
     }
   };
@@ -192,7 +174,7 @@ export function useMessageInput() {
   onUnmounted(() => {
     if (isTyping.value && canSendTypingStatus.value) {
       setTypingStatus(chatStore.activeChatId!, userStore.userId!, false).catch(
-        console.error,
+        () => {},
       );
     }
   });

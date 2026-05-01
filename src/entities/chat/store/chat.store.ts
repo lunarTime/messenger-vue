@@ -321,7 +321,8 @@ export const useChatStore = defineStore("chat", () => {
   };
 
   const isChatAdmin = (chatId: string): boolean => {
-    return getMyRole(chatId) === "admin";
+    const role = getMyRole(chatId);
+    return role === "admin" || role === "owner";
   };
 
   const reorderPinnedChats = async (

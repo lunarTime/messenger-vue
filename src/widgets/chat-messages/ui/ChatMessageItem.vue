@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, inject, type Ref } from "vue";
 import type { Message } from "@/shared/types/message";
 import ChatBubble from "@/shared/ui/ChatBubble.vue";
 import MessageActionsMenu from "@/features/message-actions/ui/MessageActionsMenu.vue";
@@ -23,6 +23,7 @@ const emit = defineEmits<{
 const messageStore = useMessageStore();
 const chatStore = useChatStore();
 const messageRef = ref<HTMLElement | null>(null);
+const scrollContainer = inject<Ref<HTMLElement | null>>("chatScrollContainer");
 
 const isOutgoing = computed(
   () => props.message.senderId === props.currentUserId,
@@ -38,11 +39,16 @@ const deliveryStatus = computed(() => {
   return messageStore.messageStatuses.get(props.message.id);
 });
 
-useIntersectionObserver(messageRef, () => {
-  if (!isOutgoing.value && !props.message.isDeleted) {
-    messageStore.markMessageAsRead(props.message.id);
-  }
-});
+useIntersectionObserver(
+  messageRef,
+  () => {
+    if (!isOutgoing.value && !props.message.isDeleted) {
+      messageStore.markMessageAsRead(props.message.id);
+    }
+  },
+  scrollContainer,
+  { threshold: 0.5 },
+);
 </script>
 
 <template>
