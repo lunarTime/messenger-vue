@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore'
 export type ChatType = 'direct' | 'group'
-export type ChatMemberRole = 'admin' | 'member'
+export type ChatMemberRole = 'owner' | 'admin' | 'member'
 
 export interface Chat {
     id: string
