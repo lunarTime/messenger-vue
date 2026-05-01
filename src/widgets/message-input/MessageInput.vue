@@ -1,9 +1,17 @@
 <script setup lang="ts">
+import { ref, nextTick, defineAsyncComponent, watch } from "vue";
+import { onClickOutside } from "@vueuse/core";
+
 import { useMessageInput } from "@/features/send-message/model/useMessageInput";
 import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
+import { useTheme } from "@/shared/composables/useTheme";
+
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
 import Message from "primevue/message";
+import "vue3-emoji-picker/css";
+
+const EmojiPicker = defineAsyncComponent(() => import("vue3-emoji-picker"));
 
 const {
   message,
@@ -13,12 +21,63 @@ const {
   showCharacterCount,
   isNearLimit,
   isAtLimit,
-  maxLength,
   sendMessage,
   handleKeyDown,
+  maxLength,
 } = useMessageInput();
 
 const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
+const { isDark } = useTheme();
+
+const textareaRef = ref<any>(null);
+const isEmojiOpen = ref(false);
+const pickerRef = ref<HTMLElement | null>(null);
+const pickerKey = ref(0);
+const savedCursorPos = ref<number | null>(null);
+
+type Emoji = { i: string };
+
+const getTextarea = (): HTMLTextAreaElement | null => {
+  const el = textareaRef.value?.$el;
+  if (!el) return null;
+  return el.tagName === "TEXTAREA" ? el : el.querySelector("textarea");
+};
+
+const saveCursorPos = () => {
+  const el = getTextarea();
+  if (el) savedCursorPos.value = el.selectionStart;
+};
+
+const onSelectEmoji = async (emoji: Emoji) => {
+  const el = getTextarea();
+  if (!el) return;
+
+  const insertAt = savedCursorPos.value ?? message.value.length;
+
+  message.value =
+    message.value.slice(0, insertAt) + emoji.i + message.value.slice(insertAt);
+
+  const newPos = insertAt + emoji.i.length;
+  savedCursorPos.value = newPos;
+
+  await nextTick();
+
+  el.focus();
+  el.setSelectionRange(newPos, newPos);
+};
+
+const toggleEmoji = () => {
+  saveCursorPos();
+  isEmojiOpen.value = !isEmojiOpen.value;
+};
+
+onClickOutside(pickerRef, () => {
+  isEmojiOpen.value = false;
+});
+
+watch(isDark, () => {
+  if (isEmojiOpen.value) pickerKey.value++;
+});
 </script>
 
 <template>
@@ -44,38 +103,90 @@ const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
     <div class="flex gap-2">
       <div class="flex-1 relative">
         <Textarea
+          ref="textareaRef"
           v-model="message"
           :maxlength="maxLength"
           :auto-resize="true"
           :disabled="isSending || isRewriting"
           @keydown="handleKeyDown"
-          class="block w-full max-h-80 pr-12!"
+          @keyup="saveCursorPos"
+          @click="saveCursorPos"
+          @blur="saveCursorPos"
+          class="block w-full max-h-80 pr-15!"
           placeholder="Напишите сообщение..."
           rows="3"
           fluid
         />
 
         <Transition
-          enter-active-class="transition-opacity duration-200"
-          enter-from-class="opacity-0"
-          enter-to-class="opacity-100"
-          leave-active-class="transition-opacity duration-150"
+          enter-active-class="transition-all duration-200 ease-out"
+          enter-from-class="opacity-0 translate-y-2 scale-95"
+          enter-to-class="opacity-100 translate-y-0 scale-100"
+          leave-active-class="transition-all duration-150 ease-in"
           leave-from-class="opacity-100"
-          leave-to-class="opacity-0"
+          leave-to-class="opacity-0 translate-y-2 scale-95"
         >
+          <div
+            ref="pickerRef"
+            v-if="isEmojiOpen"
+            class="absolute bottom-12 right-0 z-2"
+          >
+            <EmojiPicker
+              :key="pickerKey"
+              @select="onSelectEmoji"
+              :theme="isDark ? 'dark' : 'light'"
+              :static-texts="{ placeholder: 'Поиск эмодзи' }"
+              :disabled-groups="['flags']"
+              :disable-skin-tones="true"
+              :display-recent="true"
+              :native="true"
+              :group-names="{
+                smileys_people: 'Лиц и люди',
+                animals_nature: 'Животные и природа',
+                food_drink: 'Еда и напитки',
+                activities: 'Активности',
+                travel_places: 'Путешествие',
+                objects: 'Объекты',
+                symbols: 'Символы',
+                recent: 'Недавние',
+              }"
+            />
+          </div>
+        </Transition>
+
+        <div class="absolute flex items-center top-0 right-0 w-fit">
+          <Transition
+            enter-active-class="transition-opacity duration-200"
+            enter-from-class="opacity-0"
+            enter-to-class="opacity-100"
+            leave-active-class="transition-opacity duration-150"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+          >
+            <Button
+              v-if="message.trim() && !isSending"
+              type="button"
+              :loading="isRewriting"
+              @click="handleRewrite"
+              icon="pi pi-sparkles"
+              class="w-8! h-8!"
+              rounded
+              text
+              severity="help"
+              v-tooltip.top="'Переписать в корпоративном стиле'"
+            />
+          </Transition>
+
           <Button
-            v-if="message.trim() && !isSending"
             type="button"
-            :loading="isRewriting"
-            @click="handleRewrite"
-            icon="pi pi-sparkles"
-            class="absolute! top-2 right-2 w-8! h-8!"
+            icon="pi pi-face-smile"
+            class="w-8! h-8!"
             rounded
             text
-            severity="help"
-            v-tooltip.top="'Переписать в корпоративном стиле'"
+            @mousedown.prevent="toggleEmoji"
+            v-tooltip.top="'Открыть смайлы'"
           />
-        </Transition>
+        </div>
 
         <Transition
           enter-active-class="transition-opacity duration-200"
