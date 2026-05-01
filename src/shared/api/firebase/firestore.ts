@@ -18,6 +18,7 @@ import {
   type QuerySnapshot,
   type DocumentData,
   type Timestamp,
+  arrayUnion,
 } from "firebase/firestore";
 import { db } from "./index";
 import type { Chat, ChatMemberRole } from "@/shared/types/chat";
@@ -298,6 +299,60 @@ export async function setChatPinnedOrder(
   );
 }
 
+export async function addGroupMembers(
+  chatId: string,
+  userIds: string[],
+  addedBy: string,
+): Promise<void> {
+  if (!chatId || !userIds.length) return;
+
+  await updateDoc(doc(db, "chats", chatId), {
+    participants: arrayUnion(...userIds),
+    updatedAt: serverTimestamp(),
+  });
+
+  const memberTasks = userIds.map((userId) => {
+    return setDoc(
+      doc(db, "chats", chatId, "members", userId),
+      {
+        userId,
+        role: "member",
+        joinedAt: serverTimestamp(),
+        addedBy,
+        unreadCount: 0,
+        isPinned: false,
+      },
+      { merge: true },
+    );
+  });
+
+  await Promise.all(memberTasks);
+}
+
+export function subscribeToChatMembers(
+  chatId: string,
+  callback: (members: { userId: string; role: ChatMemberRole }[]) => void,
+): Unsubscribe {
+  if (!chatId) {
+    callback([]);
+    return () => {};
+  }
+
+  const membersRef = collection(db, "chats", chatId, "members");
+
+  return onSnapshot(
+    membersRef,
+    (snapshot) => {
+      const members = snapshot.docs.map((doc) => ({
+        userId: doc.id,
+        role: (doc.data().role as ChatMemberRole) || "member",
+      }));
+      callback(members);
+    },
+    () => callback([]),
+  );
+}
+
 export async function leaveChat(chatId: string, userId: string): Promise<void> {
   if (!chatId || !userId) throw new Error("Invalid parameters");
 
@@ -574,7 +629,9 @@ export function subscribeToChatMessages(
           }
         });
 
-        filteredMessages = filteredMessages.filter((msg) => !deletedSet.has(msg.id));
+        filteredMessages = filteredMessages.filter(
+          (msg) => !deletedSet.has(msg.id),
+        );
 
         try {
           const chatSnap = await getDoc(doc(db, "chats", chatId));
