@@ -11,6 +11,7 @@ import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
 import ChatMessageItem from "@/widgets/chat-messages/ui/ChatMessageItem.vue";
+import SystemMessageItem from "@/widgets/chat-messages/ui/SystemMessageItem.vue";
 import ProgressSpinner from "primevue/progressspinner";
 import Textarea from "primevue/textarea";
 import Dialog from "primevue/dialog";
@@ -29,27 +30,86 @@ const { editMessage, deleteMessageForMe, deleteMessageForAll } =
   useMessageActions();
 
 interface MessageGroup {
-  senderId: string;
+  type: "user" | "system";
+  senderId?: string;
   messages: typeof messageStore.messages;
 }
 
+interface DateGroup {
+  date: string;
+  groups: MessageGroup[];
+}
+
+const formatDateLabel = (date: Date) => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const messageDate = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
+
+  if (messageDate.getTime() === today.getTime()) return "Сегодня";
+  if (messageDate.getTime() === yesterday.getTime()) return "Вчера";
+
+  const options: Intl.DateTimeFormatOptions = {
+    day: "numeric",
+    month: "long",
+  };
+
+  if (date.getFullYear() !== now.getFullYear()) {
+    options.year = "numeric";
+  }
+
+  return date.toLocaleDateString("ru-RU", options);
+};
+
 const groupedMessages = computed(() => {
-  const groups: MessageGroup[] = [];
-  let currentGroup: MessageGroup | null = null;
+  const dateGroups: DateGroup[] = [];
 
   messageStore.messages.forEach((message) => {
-    if (currentGroup && currentGroup.senderId === message.senderId) {
+    if (!message.createdAt) return;
+
+    const date = message.createdAt.toDate();
+    const dateLabel = formatDateLabel(date);
+
+    let dateGroup = dateGroups.find((dg) => dg.date === dateLabel);
+
+    if (!dateGroup) {
+      dateGroup = { date: dateLabel, groups: [] };
+      dateGroups.push(dateGroup);
+    }
+
+    let currentGroup =
+      dateGroup.groups.length > 0
+        ? dateGroup.groups[dateGroup.groups.length - 1]
+        : null;
+
+    if (message.type === "system") {
+      dateGroup.groups.push({
+        type: "system",
+        messages: [message],
+      });
+    } else if (
+      currentGroup &&
+      currentGroup.type === "user" &&
+      currentGroup.senderId === message.senderId
+    ) {
       currentGroup.messages.push(message);
     } else {
-      currentGroup = {
+      dateGroup.groups.push({
+        type: "user",
         senderId: message.senderId,
         messages: [message],
-      };
-      groups.push(currentGroup);
+      });
     }
   });
 
-  return groups;
+  return dateGroups;
 });
 
 const containerRef = ref<HTMLElement | null>(null);
@@ -57,13 +117,12 @@ const isUserScrolling = ref(false);
 const editDialogVisible = ref(false);
 const editingMessageId = ref<string | null>(null);
 const editingText = ref("");
-
 const { isRewriting, aiError, handleRewrite } = useAiRewrite(editingText);
-
 const hasMessages = computed(() => messageStore.messages.length > 0);
 const showContent = computed(
   () => !messageStore.isLoading && hasMessages.value,
 );
+
 const showEmptyState = computed(
   () => !messageStore.isLoading && !hasMessages.value,
 );
@@ -116,7 +175,6 @@ watch(
 
     await nextTick();
     await new Promise((resolve) => setTimeout(resolve, 100));
-
     await scrollToBottom(false);
   },
   { immediate: true },
@@ -272,76 +330,103 @@ const handleDeleteForAll = (messageId: string) => {
       ref="containerRef"
       class="h-full overflow-y-auto overflow-x-hidden pr-2"
     >
-      <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-6">
         <div
-          v-for="(group, groupIndex) in groupedMessages"
-          :key="group.senderId + groupIndex"
-          class="flex flex-col gap-1"
+          v-for="dateGroup in groupedMessages"
+          :key="dateGroup.date"
+          class="flex flex-col gap-4"
         >
           <div
-            class="flex gap-2 w-full"
-            :class="
-              group.senderId === userStore.userId
-                ? 'flex-row-reverse'
-                : 'flex-row'
-            "
+            class="sticky top-2 z-20 flex justify-center pointer-events-none"
           >
             <div
-              v-if="
-                chatStore.activeChat?.type === 'group' &&
-                group.senderId !== userStore.userId
-              "
-              class="w-fit shrink-0 relative"
+              class="px-2 py-0.5 rounded-full backdrop-blur-md bg-(--p-primary-color)/30 leading-0 pointer-events-auto"
             >
-              <div class="sticky bottom-0 top-0 h-[2rem]">
-                <Avatar
-                  :image="
-                    chatStore.chatParticipants.get(group.senderId)?.photoURL ??
-                    undefined
-                  "
-                  :label="
-                    chatStore.chatParticipants.get(group.senderId)?.photoURL
-                      ? undefined
-                      : (
-                          chatStore.chatParticipants
-                            .get(group.senderId)
-                            ?.displayName?.charAt(0) || '?'
-                        ).toUpperCase()
-                  "
-                  :class="[
-                    chatStore.chatParticipants.get(group.senderId)?.photoURL
-                      ? undefined
-                      : getAvatarColor(group.senderId) + ' text-white!',
-                  ]"
-                  shape="circle"
-                  size="normal"
-                />
-              </div>
+              <span class="text-sm">
+                {{ dateGroup.date }}
+              </span>
             </div>
+          </div>
 
-            <div
-              class="flex flex-col gap-1 flex-1 min-w-0"
-              :class="
-                group.senderId === userStore.userId
-                  ? 'items-end'
-                  : 'items-start'
-              "
-            >
-              <ChatMessageItem
-                v-for="(message, index) in group.messages"
+          <div
+            v-for="(group, groupIndex) in dateGroup.groups"
+            :key="(group.senderId || 'system') + groupIndex"
+            class="flex flex-col gap-1"
+          >
+            <template v-if="group.type === 'system'">
+              <SystemMessageItem
+                v-for="message in group.messages"
                 :key="message.id"
                 :message="message"
-                :current-user-id="userStore.userId!"
-                :is-group="chatStore.activeChat?.type === 'group'"
-                :show-sender-name="
-                  chatStore.activeChat?.type === 'group' &&
-                  group.senderId !== userStore.userId &&
-                  index === 0
-                "
-                @edit="handleEdit"
-                @delete-for-me="handleDeleteForMe"
-                @delete-for-all="handleDeleteForAll"
               />
+            </template>
+
+            <div
+              v-else
+              class="flex gap-2 w-full"
+              :class="
+                group.senderId === userStore.userId
+                  ? 'flex-row-reverse'
+                  : 'flex-row'
+              "
+            >
+              <div
+                v-if="
+                  chatStore.activeChat?.type === 'group' &&
+                  group.senderId !== userStore.userId
+                "
+                class="w-fit shrink-0 relative"
+              >
+                <div class="sticky bottom-0 top-0 h-8">
+                  <Avatar
+                    :image="
+                      chatStore.chatParticipants.get(group.senderId!)
+                        ?.photoURL ?? undefined
+                    "
+                    :label="
+                      chatStore.chatParticipants.get(group.senderId!)?.photoURL
+                        ? undefined
+                        : (
+                            chatStore.chatParticipants
+                              .get(group.senderId!)
+                              ?.displayName?.charAt(0) || '?'
+                          ).toUpperCase()
+                    "
+                    :class="[
+                      chatStore.chatParticipants.get(group.senderId!)?.photoURL
+                        ? undefined
+                        : getAvatarColor(group.senderId!) + ' text-white!',
+                    ]"
+                    shape="circle"
+                    size="normal"
+                  />
+                </div>
+              </div>
+
+              <div
+                class="flex flex-col gap-1 flex-1 min-w-0"
+                :class="
+                  group.senderId === userStore.userId
+                    ? 'items-end'
+                    : 'items-start'
+                "
+              >
+                <ChatMessageItem
+                  v-for="(message, index) in group.messages"
+                  :key="message.id"
+                  :message="message"
+                  :current-user-id="userStore.userId!"
+                  :is-group="chatStore.activeChat?.type === 'group'"
+                  :show-sender-name="
+                    chatStore.activeChat?.type === 'group' &&
+                    group.senderId !== userStore.userId &&
+                    index === 0
+                  "
+                  @edit="handleEdit"
+                  @delete-for-me="handleDeleteForMe"
+                  @delete-for-all="handleDeleteForAll"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -359,11 +444,10 @@ const handleDeleteForAll = (messageId: string) => {
       <Button
         v-if="isUserScrolling && hasMessages"
         @click="scrollToBottom(true)"
-        class="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 transition-all!"
+        class="absolute bottom-8 left-1/2 w-20! rounded-2xl! -translate-x-1/2 z-30 transition-all!"
         icon="pi pi-arrow-down"
         severity="contrast"
-        rounded
-        size="large"
+        size="small"
         aria-label="Прокрутить вниз"
       />
     </Transition>
