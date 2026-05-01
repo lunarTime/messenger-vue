@@ -201,7 +201,7 @@ const onContextMenu = (event: MouseEvent) => {
 <template>
   <div
     v-ripple
-    class="relative flex items-center gap-3 p-4 cursor-pointer transition-all scale-100 duration-200 hover:bg-(--p-primary-color)/20 rounded-2xl border-2 border-dashed border-transparent"
+    class="relative flex items-center gap-3 p-2 cursor-pointer transition-all scale-100 duration-200 hover:bg-(--p-primary-color)/20 rounded-2xl border-2 border-dashed border-transparent"
     :class="{ 'bg-(--p-primary-color)/30': active }"
     @contextmenu.prevent.stop="onContextMenu"
   >
@@ -210,7 +210,7 @@ const onContextMenu = (event: MouseEvent) => {
       :chat-id="chatId"
       :is-pinned="isPinned"
     />
-    <div class="relative shrink-0">
+    <div class="relative flex shrink-0">
       <Avatar
         :image="photoURL ?? undefined"
         :label="
@@ -219,12 +219,18 @@ const onContextMenu = (event: MouseEvent) => {
             : (name?.charAt(0) || '?').toUpperCase()
         "
         :icon="!photoURL && isGroup ? 'pi pi-users' : undefined"
+        class="overflow-hidden"
         :class="[
           photoURL ? undefined : avatarBgColor + ' text-white!',
           isGroup ? 'rounded-xl!' : '',
         ]"
         :shape="isGroup ? 'square' : 'circle'"
         size="large"
+        :pt="{
+          image: {
+            class: 'object-cover',
+          },
+        }"
       />
 
       <div
@@ -234,7 +240,7 @@ const onContextMenu = (event: MouseEvent) => {
       />
     </div>
 
-    <div class="flex-1 min-w-0 overflow-hidden">
+    <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
       <div class="flex items-center justify-between mb-1 min-w-0">
         <div class="flex items-center gap-2">
           <i

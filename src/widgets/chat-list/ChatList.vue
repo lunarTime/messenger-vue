@@ -94,11 +94,11 @@ const onPinnedDragOver = (chatId: string) => {
 
 <template>
   <div
-    class="flex flex-col h-[-webkit-fill-available] gap-4 m-4 mr-0 p-4 bg-(--p-primary-color)/20 dark:bg-white/10 rounded-xl"
+    class="flex flex-col h-[-webkit-fill-available] gap-4 m-4 mr-0 p-4 pr-2 bg-(--p-primary-color)/20 dark:bg-white/10 rounded-xl"
   >
     <UserSearch />
 
-    <ScrollPanel class="flex-1 h-0 w-full min-w-0 -mr-4">
+    <ScrollPanel class="flex-1 h-0 w-full min-w-0 pr-[16px]">
       <div v-if="chatStore.visibleChats.length === 0" class="p-8 text-center">
         <i class="pi pi-comments text-4xl mb-4"></i>
         <p>Нет активных чатов</p>
@@ -138,7 +138,10 @@ const onPinnedDragOver = (chatId: string) => {
           />
         </div>
 
-        <Divider v-if="pinnedChats.length && unpinnedChats.length" class="my-1">
+        <Divider
+          v-if="pinnedChats.length && unpinnedChats.length"
+          class="my-0!"
+        >
         </Divider>
 
         <ChatListItem
@@ -178,5 +181,6 @@ const onPinnedDragOver = (chatId: string) => {
   width: 100%;
   min-width: 0;
   padding: 0;
+  height: inherit;
 }
 </style>

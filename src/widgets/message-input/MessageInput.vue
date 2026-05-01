@@ -45,14 +45,13 @@ const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
       <div class="flex-1 relative">
         <Textarea
           v-model="message"
-          :max-rows="5"
           :maxlength="maxLength"
           :auto-resize="true"
           :disabled="isSending || isRewriting"
           @keydown="handleKeyDown"
-          class="block w-full max-h-80"
+          class="block w-full max-h-80 pr-12!"
           placeholder="Напишите сообщение..."
-          rows="2"
+          rows="3"
           fluid
         />
 
@@ -70,7 +69,7 @@ const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
             :loading="isRewriting"
             @click="handleRewrite"
             icon="pi pi-sparkles"
-            class="absolute top-2 right-2 w-8! h-8!"
+            class="absolute! top-2 right-2 w-8! h-8!"
             rounded
             text
             severity="help"
@@ -88,7 +87,7 @@ const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
         >
           <div
             v-if="showCharacterCount"
-            class="absolute bottom-2 right-2 text-xs px-2 py-1 rounded-md backdrop-blur-sm"
+            class="absolute! bottom-2 right-2 text-xs px-2 py-1 rounded-md backdrop-blur-sm"
             :class="{
               'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold':
                 isAtLimit,

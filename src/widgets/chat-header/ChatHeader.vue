@@ -9,7 +9,10 @@ import type { User } from "@/shared/types/user";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
 import { useUserStore } from "@/entities/user/store/user.store";
 import Avatar from "primevue/avatar";
+import Button from "primevue/button";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
+import Drawer from "primevue/drawer";
+import GroupChatInfo from "@/features/chat-actions/ui/GroupChatInfo.vue";
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
@@ -19,9 +22,16 @@ let unsubscribeUser: (() => void) | null = null;
 let unsubscribeTyping: (() => void) | null = null;
 const otherUser = ref<User | null>(null);
 const typingUsers = ref<string[]>([]);
+const isInfoVisible = ref(false);
 
 const chat = computed(() => chatStore.activeChat);
 const isGroup = computed(() => chat.value?.type === "group");
+
+const openChatInformation = () => {
+  if (isGroup.value) {
+    isInfoVisible.value = true;
+  }
+};
 
 const avatarBgColor = computed(() => {
   if (isGroup.value) {
@@ -159,49 +169,74 @@ onUnmounted(() => {
 
 <template>
   <div class="sticky top-0 z-10 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="relative flex items-center gap-2">
-        <Button
-          @click="chatStore.closeActiveChat"
-          icon="pi pi-arrow-left"
-          size="small"
-          title="Закрыть чат"
-        />
-        <Avatar
-          :image="getChatPhotoURL ?? undefined"
-          :label="
-            getChatPhotoURL || isGroup
-              ? undefined
-              : chatName.charAt(0).toUpperCase()
-          "
-          :icon="!getChatPhotoURL && isGroup ? 'pi pi-users' : undefined"
-          :class="[
-            getChatPhotoURL ? undefined : avatarBgColor + ' text-white!',
-            isGroup ? 'rounded-xl!' : '',
-          ]"
-          :shape="isGroup ? 'square' : 'circle'"
-          size="large"
-        />
-        <div
-          v-if="isOnline"
-          class="absolute top-0 right-0 w-3 h-3 bg-green-500 border rounded-full"
-          title="Онлайн"
-        />
-      </div>
-
-      <div>
-        <div class="flex items-center gap-2">
-          <h2 class="text-lg font-semibold">
-            {{ chatName }}
-          </h2>
+    <div class="flex items-center gap-2">
+      <Button
+        @click="chatStore.closeActiveChat"
+        icon="pi pi-arrow-left"
+        size="small"
+        title="Закрыть чат"
+      />
+      <div
+        class="flex items-center gap-2"
+        :class="{ 'cursor-pointer hover:opacity-80 transition-opacity': isGroup }"
+        @click="openChatInformation"
+      >
+        <div class="flex relative">
+          <Avatar
+            :image="getChatPhotoURL ?? undefined"
+            :label="
+              getChatPhotoURL || isGroup
+                ? undefined
+                : chatName.charAt(0).toUpperCase()
+            "
+            :icon="!getChatPhotoURL && isGroup ? 'pi pi-users' : undefined"
+            class="overflow-hidden"
+            :class="[
+              getChatPhotoURL ? undefined : avatarBgColor + ' text-white!',
+              isGroup ? 'rounded-xl!' : '',
+            ]"
+            :shape="isGroup ? 'square' : 'circle'"
+            size="large"
+            :pt="{
+              image: {
+                class: 'object-cover',
+              },
+            }"
+          />
+          <div
+            v-if="isOnline"
+            class="absolute top-0 right-0 w-3 h-3 bg-green-500 border rounded-full"
+            title="Онлайн"
+          />
         </div>
-        <p
-          class="text-sm opacity-70"
-          :class="{ 'text-(--p-primary-color) animate-pulse': isTyping }"
-        >
-          {{ subtitleText }}
-        </p>
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-lg font-semibold">
+              {{ chatName }}
+            </h2>
+          </div>
+          <p
+            class="text-sm opacity-70"
+            :class="{ 'text-(--p-primary-color) animate-pulse': isTyping }"
+          >
+            {{ subtitleText }}
+          </p>
+        </div>
       </div>
     </div>
   </div>
+
+  <Drawer
+    v-model:visible="isInfoVisible"
+    position="right"
+    header="Информация"
+    class="w-full! max-w-md! border-l border-surface-200 dark:border-surface-800"
+    :pt="{
+      root: { class: 'bg-surface-50 dark:bg-surface-950' },
+      header: { class: 'hidden' },
+      content: { class: 'p-0 h-full' },
+    }"
+  >
+    <GroupChatInfo v-if="chat?.id" :chat-id="chat.id" />
+  </Drawer>
 </template>

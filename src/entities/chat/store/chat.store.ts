@@ -133,8 +133,6 @@ export const useChatStore = defineStore("chat", () => {
         const participantIds = new Set<string>();
 
         loadedChats.forEach((chat) => {
-          if (chat.type !== "direct") return;
-
           for (const id of chat.participants) {
             if (id !== myIdVal) {
               participantIds.add(id);
