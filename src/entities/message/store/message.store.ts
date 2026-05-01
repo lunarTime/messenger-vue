@@ -11,7 +11,6 @@ import {
   deleteMessageForAll as deleteFirebaseMessageForAll,
   subscribeToMessageDeletedForUser,
   setMessageDeliveryStatus,
-  markChatAsRead,
   subscribeToMessageDeliveryStatus,
   subscribeToChatMemberMeta,
   subscribeToChatMeta,
@@ -31,6 +30,7 @@ export const useMessageStore = defineStore("messages", () => {
   const deletedForUnsubscribers = ref<Map<string, Unsubscribe>>(new Map());
   const unsubscribeMemberMeta = ref<Unsubscribe | null>(null);
   const unsubscribeChatMeta = ref<Unsubscribe | null>(null);
+  const pendingReadMessages = new Set<string>();
 
   watch(
     () => chatStore.activeChatId,
@@ -52,6 +52,7 @@ export const useMessageStore = defineStore("messages", () => {
       statusUnsubscribers.value.forEach((unsub) => unsub());
       statusUnsubscribers.value.clear();
       messageStatuses.value.clear();
+      pendingReadMessages.clear();
       messages.value = [];
 
       if (newChatId && !newChatId.startsWith("temp_")) {
@@ -108,30 +109,35 @@ export const useMessageStore = defineStore("messages", () => {
         messages.value = loadedMessages;
         isLoading.value = false;
 
+        const myId = userStore.userId;
+        const chatMembers =
+          chatStore.activeChat?.participants.filter((id) => id !== myId) || [];
+        const otherUserId = chatMembers[0] ?? null;
+
         loadedMessages.forEach((msg) => {
-          if (msg.senderId === userStore.userId) {
-            const chatMembers =
-              chatStore.activeChat?.participants.filter(
-                (id) => id !== userStore.userId,
-              ) || [];
-
-            if (chatMembers.length > 0) {
-              const otherUserId = chatMembers[0];
-
-              if (otherUserId && !statusUnsubscribers.value.has(msg.id)) {
-                const unsub = subscribeToMessageDeliveryStatus(
-                  msg.id,
-                  chatId,
-                  otherUserId,
-                  (status) => {
-                    if (status) {
-                      messageStatuses.value.set(msg.id, status);
-                    }
-                  },
-                );
-
-                statusUnsubscribers.value.set(msg.id, unsub);
-              }
+          if (!statusUnsubscribers.value.has(msg.id)) {
+            if (msg.senderId === myId && otherUserId) {
+              const unsub = subscribeToMessageDeliveryStatus(
+                msg.id,
+                chatId,
+                otherUserId,
+                (status) => {
+                  if (status) messageStatuses.value.set(msg.id, status);
+                },
+              );
+              statusUnsubscribers.value.set(msg.id, unsub);
+            } else if (msg.senderId !== myId && myId) {
+              const unsub = subscribeToMessageDeliveryStatus(
+                msg.id,
+                chatId,
+                myId,
+                (status) => {
+                  if (status === "read") {
+                    messageStatuses.value.set(msg.id, status);
+                  }
+                },
+              );
+              statusUnsubscribers.value.set(msg.id, unsub);
             }
           }
         });
@@ -168,11 +174,16 @@ export const useMessageStore = defineStore("messages", () => {
     const message = messages.value.find((m) => m.id === messageId);
     if (!message || message.senderId === myId || message.isDeleted) return;
 
+    const currentStatus = messageStatuses.value.get(messageId);
+    if (currentStatus === "read" || pendingReadMessages.has(messageId)) return;
+
+    pendingReadMessages.add(messageId);
     try {
       await setMessageDeliveryStatus(messageId, chatId, myId, "read");
-      await markChatAsRead(chatId, myId, messageId);
     } catch (error) {
       console.error("Ошибка при прочтении сообщения:", error);
+    } finally {
+      pendingReadMessages.delete(messageId);
     }
   };
 
