@@ -22,10 +22,39 @@ import {
 } from "firebase/firestore";
 import { db } from "./index";
 import type { Chat, ChatMemberRole } from "@/shared/types/chat";
-import type { Message, MessageStatus } from "@/shared/types/message";
+import type {
+  Message,
+  MessageStatus,
+  SystemMessageEventType,
+  SystemMessageData,
+} from "@/shared/types/message";
 import type { User } from "@/shared/types/user";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
+
+export function subscribeToChatMembers(
+  chatId: string,
+  callback: (members: { userId: string; role: ChatMemberRole }[]) => void,
+): Unsubscribe {
+  if (!chatId) {
+    callback([]);
+    return () => {};
+  }
+
+  const membersRef = collection(db, "chats", chatId, "members");
+
+  return onSnapshot(
+    membersRef,
+    (snapshot) => {
+      const members = snapshot.docs.map((doc) => ({
+        userId: doc.id,
+        role: (doc.data().role as ChatMemberRole) || "member",
+      }));
+      callback(members);
+    },
+    () => callback([]),
+  );
+}
 
 export async function getUserById(userId: string): Promise<User | null> {
   if (!userId) return null;
@@ -149,6 +178,51 @@ export async function getOrCreateDirectChat(
   }
 }
 
+export async function sendSystemMessage(
+  chatId: string,
+  eventType: SystemMessageEventType,
+  actorId: string,
+  targetUserIds?: string[],
+  extraData?: Partial<SystemMessageData>,
+): Promise<string> {
+  try {
+    const systemData: SystemMessageData = {
+      eventType,
+      actorId,
+      targetUserIds,
+      ...extraData,
+    };
+
+    const messageData = {
+      chatId,
+      senderId: "system",
+      type: "system" as const,
+      text: "",
+      systemData,
+      isEdited: false,
+      isDeleted: false,
+      createdAt: serverTimestamp(),
+    };
+
+    const messageRef = await addDoc(
+      collection(db, "chats", chatId, "messages"),
+      messageData,
+    );
+
+    await updateDoc(doc(db, "chats", chatId), {
+      updatedAt: serverTimestamp(),
+      "lastMessage.text": "Системное сообщение",
+      "lastMessage.senderId": "system",
+      "lastMessage.createdAt": serverTimestamp(),
+    });
+
+    return messageRef.id;
+  } catch (error) {
+    console.error("Failed to send system message:", error);
+    throw error;
+  }
+}
+
 export async function createGroupChat(
   creatorId: string,
   name: string,
@@ -170,7 +244,7 @@ export async function createGroupChat(
     updatedAt: serverTimestamp(),
     lastMessage: {
       text: "Группа создана",
-      senderId: creatorId,
+      senderId: "system",
       createdAt: serverTimestamp(),
     },
   });
@@ -186,7 +260,43 @@ export async function createGroupChat(
   });
 
   await Promise.all(memberTasks);
+
+  await sendSystemMessage(chatRef.id, "chat_created", creatorId, [], {
+    newValue: name,
+  });
+
   return chatRef.id;
+}
+
+export async function updateGroupInfo(
+  chatId: string,
+  actorId: string,
+  updates: { name?: string; photoURL?: string; description?: string },
+): Promise<void> {
+  if (!chatId || !actorId) throw new Error("Invalid parameters");
+
+  const chatDoc = await getDoc(doc(db, "chats", chatId));
+  if (!chatDoc.exists()) throw new Error("Chat not found");
+
+  const oldData = chatDoc.data() as Chat;
+  await updateDoc(doc(db, "chats", chatId), {
+    ...updates,
+    updatedAt: serverTimestamp(),
+  });
+
+  if (updates.name && updates.name !== oldData.name) {
+    await sendSystemMessage(chatId, "chat_name_changed", actorId, [], {
+      oldValue: oldData.name,
+      newValue: updates.name,
+    });
+  }
+
+  if (updates.photoURL !== undefined && updates.photoURL !== oldData.photoURL) {
+    await sendSystemMessage(chatId, "chat_photo_changed", actorId, [], {
+      oldValue: oldData.photoURL,
+      newValue: updates.photoURL,
+    });
+  }
 }
 
 export async function deleteGroupChat(chatId: string): Promise<void> {
@@ -327,42 +437,49 @@ export async function addGroupMembers(
   });
 
   await Promise.all(memberTasks);
+
+  await sendSystemMessage(chatId, "user_added", addedBy, userIds);
 }
 
-export function subscribeToChatMembers(
+export async function removeGroupMember(
   chatId: string,
-  callback: (members: { userId: string; role: ChatMemberRole }[]) => void,
-): Unsubscribe {
-  if (!chatId) {
-    callback([]);
-    return () => {};
+  userId: string,
+  removedBy: string,
+): Promise<void> {
+  if (!chatId || !userId || !removedBy) throw new Error("Invalid parameters");
+
+  await updateDoc(doc(db, "chats", chatId), {
+    participants: arrayRemove(userId),
+    updatedAt: serverTimestamp(),
+  });
+
+  await deleteDoc(doc(db, "chats", chatId, "members", userId));
+
+  try {
+    await sendSystemMessage(chatId, "user_removed", removedBy, [userId]);
+  } catch (err) {
+    console.error("Non-critical: failed to send removal system message", err);
   }
-
-  const membersRef = collection(db, "chats", chatId, "members");
-
-  return onSnapshot(
-    membersRef,
-    (snapshot) => {
-      const members = snapshot.docs.map((doc) => ({
-        userId: doc.id,
-        role: (doc.data().role as ChatMemberRole) || "member",
-      }));
-      callback(members);
-    },
-    () => callback([]),
-  );
 }
 
-export async function leaveChat(chatId: string, userId: string): Promise<void> {
+export async function leaveChat(
+  chatId: string,
+  userId: string,
+  isGroup: boolean = false,
+): Promise<void> {
   if (!chatId || !userId) throw new Error("Invalid parameters");
 
-  await Promise.allSettled([
+  await Promise.all([
     updateDoc(doc(db, "chats", chatId), {
       participants: arrayRemove(userId),
       updatedAt: serverTimestamp(),
     }),
     deleteDoc(doc(db, "chats", chatId, "members", userId)),
   ]);
+
+  if (isGroup) {
+    await sendSystemMessage(chatId, "user_left", userId);
+  }
 }
 
 export async function clearChatHistoryForMe(
