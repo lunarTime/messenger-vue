@@ -15,7 +15,7 @@ import {
   subscribeToChatMemberMeta,
   subscribeToChatMeta,
 } from "@/shared/api/firebase/firestore";
-import type { Message, MessageStatus } from "@/shared/types/message";
+import type { Message, MessageStatus, SendMessageOptions } from "@/shared/types/message";
 import type { Unsubscribe } from "firebase/firestore";
 
 export const useMessageStore = defineStore("messages", () => {
@@ -187,7 +187,7 @@ export const useMessageStore = defineStore("messages", () => {
     }
   };
 
-  const sendMessage = async (text: string): Promise<void> => {
+  const sendMessage = async (text: string, options: SendMessageOptions = {}): Promise<void> => {
     const chat = chatStore.activeChat;
     const myId = userStore.userId;
 
@@ -217,7 +217,7 @@ export const useMessageStore = defineStore("messages", () => {
         chatStore.selectChat(actualChatId);
       }
 
-      await sendFirebaseMessage(actualChatId, myId, text);
+      await sendFirebaseMessage(actualChatId, myId, text, options);
     } catch (error) {
       throw error;
     }
