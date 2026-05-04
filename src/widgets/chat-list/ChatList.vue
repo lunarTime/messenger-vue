@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useUnreadCounts } from "@/shared/composables/useUnreadCounts";
+import { useIsMobile } from "@/shared/composables/useIsMobile";
 import type { Chat } from "@/shared/types/chat";
 import ChatListItem from "@/widgets/chat-list/ui/ChatListItem.vue";
 import UserSearch from "@/widgets/chat-list/ui/ChatSearch.vue";
@@ -12,6 +13,7 @@ import Divider from "primevue/divider";
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
+const { isMobile } = useIsMobile();
 
 const { unreadCounts } = useUnreadCounts(
   computed(() => chatStore.visibleChats),
@@ -94,11 +96,14 @@ const onPinnedDragOver = (chatId: string) => {
 
 <template>
   <div
-    class="flex flex-col h-[-webkit-fill-available] gap-4 m-4 mr-0 p-4 pr-2 bg-(--p-primary-color)/20 dark:bg-white/10 rounded-xl"
+    class="flex flex-col h-[-webkit-fill-available] bg-(--p-primary-color)/20 md:gap-4 md:m-4 md:mr-0 md:p-4 md:pr-2 gap-2 m-0 p-4 md:rounded-xl dark:bg-white/10"
   >
     <UserSearch />
 
-    <ScrollPanel class="flex-1 h-0 w-full min-w-0 pr-[16px]">
+    <ScrollPanel
+      class="flex-1 h-0 w-full min-w-0"
+      :class="{ 'pr-[16px]': !isMobile }"
+    >
       <div v-if="chatStore.visibleChats.length === 0" class="p-8 text-center">
         <i class="pi pi-comments text-4xl mb-4"></i>
         <p>Нет активных чатов</p>
