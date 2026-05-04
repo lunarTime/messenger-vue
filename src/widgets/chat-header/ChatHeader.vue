@@ -175,7 +175,6 @@ onUnmounted(() => {
   <div class="sticky top-0 z-10 flex items-center justify-between">
     <div class="flex items-center gap-2 min-w-0">
       <Button
-        v-if="mobile"
         @click="chatStore.closeActiveChat"
         icon="pi pi-arrow-left"
         size="small"
