@@ -96,7 +96,7 @@ const onPinnedDragOver = (chatId: string) => {
 
 <template>
   <div
-    class="flex flex-col h-[-webkit-fill-available] bg-(--p-primary-color)/20 md:gap-4 md:m-4 md:mr-0 md:p-4 md:pr-2 gap-2 m-0 p-4 md:rounded-xl dark:bg-white/10"
+    class="flex flex-col h-full bg-(--p-primary-color)/20 md:gap-4 md:p-4 md:pr-2 gap-2 p-4 md:rounded-xl dark:bg-white/10"
   >
     <UserSearch />
 
@@ -104,7 +104,10 @@ const onPinnedDragOver = (chatId: string) => {
       class="flex-1 h-0 w-full min-w-0"
       :class="{ 'pr-[16px]': !isMobile }"
     >
-      <div v-if="chatStore.visibleChats.length === 0" class="p-8 text-center">
+      <div
+        v-if="chatStore.visibleChats.length === 0 && !chatStore.isLoading"
+        class="p-8 text-center"
+      >
         <i class="pi pi-comments text-4xl mb-4"></i>
         <p>Нет активных чатов</p>
         <p class="text-sm mt-2">Используйте поиск выше, чтобы начать общение</p>
