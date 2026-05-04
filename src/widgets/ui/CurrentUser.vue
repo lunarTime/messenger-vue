@@ -4,9 +4,11 @@ import { useRouter } from "vue-router";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { logout } from "@/shared/api/firebase/auth";
 import ThemeSwitcher from "@/shared/ui/ThemeSwitcher.vue";
+import { useIsMobile } from "@/shared/composables/useIsMobile";
 
 const router = useRouter();
 const userStore = useUserStore();
+const { isMobile } = useIsMobile();
 
 const user = computed(() => userStore.currentUser);
 
@@ -19,7 +21,7 @@ const handleLogout = async () => {
 
 <template>
   <div class="flex items-center justify-between gap-2">
-    <div v-if="user" class="flex items-center gap-2">
+    <div v-if="user" class="flex items-center gap-2 min-w-0">
       <Avatar
         :image="user?.photoURL ?? undefined"
         :label="
@@ -28,15 +30,16 @@ const handleLogout = async () => {
         :class="
           user?.photoURL ? undefined : 'bg-(--p-primary-color)! text-white!'
         "
+        class="flex-none"
         shape="circle"
-        size="large"
+        :size="isMobile ? 'medium' : 'large'"
       />
 
-      <div class="flex flex-col">
-        <span>
+      <div class="flex flex-col gap-1">
+        <span class="md:text-base text-sm leading-none min-w-0 truncate">
           {{ user?.displayName }}
         </span>
-        <span>
+        <span class="md:text-base text-xs opacity-70 leading-none">
           {{ user?.email }}
         </span>
       </div>
