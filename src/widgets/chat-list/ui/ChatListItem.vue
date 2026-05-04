@@ -5,6 +5,7 @@ import { useUserStore } from "@/entities/user/store/user.store";
 import { useTimeAgo } from "@/shared/composables/useTimeAgo";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
 import { useLongPress } from "@/shared/composables/useLongPress";
+import { useIsMobile } from "@/shared/composables/useIsMobile";
 import {
   subscribeToMessageDeliveryStatus,
   subscribeToTyping,
@@ -36,6 +37,7 @@ const emit = defineEmits<{
   contextOpen: [chatId: string];
 }>();
 
+const { isMobile } = useIsMobile();
 const chatStore = useChatStore();
 const userStore = useUserStore();
 const now = useGlobalNow(30000);
@@ -217,8 +219,11 @@ const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
 <template>
   <div
     v-ripple
-    class="relative flex items-center md:gap-3 gap-1.5 p-2 cursor-pointer transition-all scale-100 duration-200 hover:bg-(--p-primary-color)/20 rounded-2xl border-2 border-dashed border-transparent"
-    :class="{ 'bg-(--p-primary-color)/30': active }"
+    class="relative flex items-center md:gap-3 gap-1.5 p-2 cursor-pointer transition-all scale-100 duration-200 hover:bg-(--p-primary-color)/20 rounded-2xl border-2 border-dashed border-transparent md:select-auto select-none"
+    :class="{
+      'bg-(--p-primary-color)/30': active,
+      'active:bg-(--p-primary-color)/30 active:scale-95': isMobile,
+    }"
     @contextmenu.prevent.stop="onContextMenu"
     @touchstart.passive="onTouchStart"
     @touchmove.passive="onTouchMove"
