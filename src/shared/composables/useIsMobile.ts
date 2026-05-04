@@ -3,7 +3,9 @@ import { ref, onMounted, onUnmounted } from "vue";
 const MOBILE_BREAKPOINT = 767;
 
 export function useIsMobile() {
-  const isMobile = ref(false);
+  const isMobile = ref(
+    typeof window !== "undefined" && window.innerWidth <= MOBILE_BREAKPOINT,
+  );
 
   const update = () => {
     isMobile.value = window.innerWidth <= MOBILE_BREAKPOINT;

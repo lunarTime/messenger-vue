@@ -35,7 +35,7 @@ onUnmounted(() => {
   <div class="flex h-full overflow-hidden">
     <template v-if="!isMobile">
       <Splitter class="w-full">
-        <SplitterPanel class="max-w-3xl min-w-100 h-full">
+        <SplitterPanel class="max-w-3xl min-w-100 h-full p-4 pr-0">
           <ChatList />
         </SplitterPanel>
         <SplitterPanel class="flex min-w-80">

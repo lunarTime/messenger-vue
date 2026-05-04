@@ -25,7 +25,7 @@ export function useUserSearch() {
     async (query) => {
       error.value = null;
 
-      if (!query.trim()) {
+      if (typeof query !== "string" || !query.trim()) {
         users.value = [];
 
         return;
@@ -45,7 +45,7 @@ export function useUserSearch() {
         return;
       }
 
-      const validation = validateSearchQuery(query);
+      const validation = validateSearchQuery(String(query));
 
       if (!validation.success) {
         error.value = validation.error;
