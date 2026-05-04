@@ -28,6 +28,7 @@ import type {
   MessageStatus,
   SystemMessageEventType,
   SystemMessageData,
+  SendMessageOptions,
 } from "@/shared/types/message";
 import type { User } from "@/shared/types/user";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
@@ -575,6 +576,7 @@ export async function sendMessage(
   chatId: string,
   senderId: string,
   text: string,
+  options: SendMessageOptions = {},
 ): Promise<string> {
   if (!chatId || !senderId || !text?.trim())
     throw new Error("Invalid message parameters");
@@ -589,7 +591,7 @@ export async function sendMessage(
   if (sanitizedText.length === 0) throw new Error("Message cannot be empty");
 
   try {
-    const messageData = {
+    const messageData: Record<string, unknown> = {
       chatId,
       senderId,
       type: "text" as const,
@@ -598,6 +600,15 @@ export async function sendMessage(
       isDeleted: false,
       createdAt: serverTimestamp(),
     };
+
+    if (options.replyToMessageId) {
+      messageData.replyToMessageId = options.replyToMessageId;
+    }
+
+    if (options.forwardedFrom) {
+      messageData.forwardedFrom = options.forwardedFrom;
+    }
+
     const messageRef = await addDoc(
       collection(db, "chats", chatId, "messages"),
       messageData,
@@ -743,6 +754,7 @@ export function subscribeToChatMessages(
             deletedAt: data.deletedAt || null,
             deletedBy: data.deletedBy || null,
             replyToMessageId: data.replyToMessageId || null,
+            forwardedFrom: data.forwardedFrom || null,
             attachments: data.attachments || null,
             systemData: data.systemData || null,
           } as Message;
