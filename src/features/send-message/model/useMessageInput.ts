@@ -4,6 +4,7 @@ import { useMessageStore } from "@/entities/message/store/message.store";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useChatDraftStore } from "@/entities/chat-draft/store/chatDraft.store";
 import { useUserStore } from "@/entities/user/store/user.store";
+import { useMessageCompose } from "@/shared/composables/useMessageCompose";
 import { setTypingStatus } from "@/shared/api/firebase/firestore";
 import { validateMessage } from "@/shared/lib/validation";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
@@ -15,6 +16,7 @@ export function useMessageInput() {
   const chatStore = useChatStore();
   const userStore = useUserStore();
   const draftStore = useChatDraftStore();
+  const messageCompose = useMessageCompose();
 
   const message = ref("");
   const isSending = ref(false);
@@ -30,7 +32,6 @@ export function useMessageInput() {
   );
 
   const showCharacterCount = computed(() => message.value.length > 0);
-
   const isNearLimit = computed(() => charactersRemaining.value < 100);
   const isAtLimit = computed(() => charactersRemaining.value <= 0);
 
@@ -39,6 +40,7 @@ export function useMessageInput() {
 
     try {
       await setTypingStatus(chatStore.activeChatId!, userStore.userId!, status);
+
       isTyping.value = status;
     } catch {}
   };
@@ -49,6 +51,7 @@ export function useMessageInput() {
     if (newValue.length > VALIDATION_CONFIG.MESSAGE.MAX_LENGTH) {
       message.value = newValue.slice(0, VALIDATION_CONFIG.MESSAGE.MAX_LENGTH);
       error.value = "Достигнут максимальный размер сообщения";
+
       return;
     }
 
@@ -82,6 +85,8 @@ export function useMessageInput() {
 
       isTyping.value = false;
       error.value = null;
+      messageCompose.clearReply();
+      messageCompose.clearForward();
 
       if (newChatId) {
         message.value = draftStore.getDraft(newChatId);
@@ -94,7 +99,9 @@ export function useMessageInput() {
 
   watch(message, (val) => {
     const id = chatStore.activeChatId;
+
     if (!id) return;
+
     draftStore.setDraft(id, val);
   });
 
@@ -102,6 +109,7 @@ export function useMessageInput() {
     () => chatStore.activeChatId,
     (id) => {
       if (!id) return;
+
       message.value = draftStore.getDraft(id);
     },
     { immediate: true },
@@ -149,9 +157,17 @@ export function useMessageInput() {
         await updateTypingStatus(false);
       }
 
-      await messageStore.sendMessage(sanitized);
+      const replyToMessageId = messageCompose.replyContext?.messageId;
+
+      await messageStore.sendMessage(
+        sanitized,
+        replyToMessageId ? { replyToMessageId } : {},
+      );
+
+      messageCompose.clearReply();
 
       const id = chatStore.activeChatId;
+
       message.value = "";
 
       if (id) {

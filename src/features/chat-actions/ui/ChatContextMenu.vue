@@ -21,9 +21,7 @@ const {
   deleteGroup,
 } = useChatActions();
 
-const chat = computed(() =>
-  chatStore.chats.find((c) => c.id === props.chatId),
-);
+const chat = computed(() => chatStore.chats.find((c) => c.id === props.chatId));
 
 const isAdmin = computed(() => chatStore.isChatAdmin(props.chatId));
 
@@ -82,8 +80,10 @@ const items = computed<MenuItem[]>(() => {
   ];
 });
 
-const show = (event: Event) => {
-  menuRef.value?.show(event);
+type ShowEvent = Event | { pageX: number; pageY: number; stopPropagation: () => void; preventDefault: () => void }
+
+const show = (event: ShowEvent) => {
+  menuRef.value?.show(event)
 };
 
 const hide = () => {

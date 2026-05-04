@@ -4,6 +4,7 @@ import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useTimeAgo } from "@/shared/composables/useTimeAgo";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
+import { useLongPress } from "@/shared/composables/useLongPress";
 import {
   subscribeToMessageDeliveryStatus,
   subscribeToTyping,
@@ -42,6 +43,7 @@ const contextMenuRef = ref<InstanceType<typeof ChatContextMenu> | null>(null);
 
 let unsubscribeTyping: (() => void) | null = null;
 let unsubscribeLastStatus: (() => void) | null = null;
+
 const typingUsers = ref<string[]>([]);
 const lastMessageStatus = ref<MessageStatus | null>(null);
 
@@ -198,14 +200,30 @@ const onContextMenu = (event: MouseEvent) => {
   emit("contextOpen", props.chatId);
   contextMenuRef.value?.show(event);
 };
+
+const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
+  onLongPress: (pageX: number, pageY: number) => {
+    emit("contextOpen", props.chatId);
+    contextMenuRef.value?.show({
+      pageX,
+      pageY,
+      stopPropagation: () => {},
+      preventDefault: () => {},
+    } as unknown as Event);
+  },
+});
 </script>
 
 <template>
   <div
     v-ripple
-    class="relative flex items-center gap-3 p-2 cursor-pointer transition-all scale-100 duration-200 hover:bg-(--p-primary-color)/20 rounded-2xl border-2 border-dashed border-transparent"
+    class="relative flex items-center md:gap-3 gap-1.5 p-2 cursor-pointer transition-all scale-100 duration-200 hover:bg-(--p-primary-color)/20 rounded-2xl border-2 border-dashed border-transparent"
     :class="{ 'bg-(--p-primary-color)/30': active }"
     @contextmenu.prevent.stop="onContextMenu"
+    @touchstart.passive="onTouchStart"
+    @touchmove.passive="onTouchMove"
+    @touchend="onTouchEnd"
+    @touchcancel="onTouchCancel"
   >
     <ChatContextMenu
       ref="contextMenuRef"
@@ -244,13 +262,13 @@ const onContextMenu = (event: MouseEvent) => {
 
     <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
       <div class="flex items-center justify-between mb-1 min-w-0">
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 truncate wrap-break-word">
           <i
             v-if="isPinned"
             class="pi pi-bookmark-fill text-xs shrink-0 text-(--p-primary-color)"
             title="Закреплено"
           />
-          <h3 class="font-semibold truncate wrap-break-word">
+          <h3 class="font-semibold md:text-base text-sm truncate">
             {{ name }}
           </h3>
         </div>
@@ -260,8 +278,11 @@ const onContextMenu = (event: MouseEvent) => {
       </div>
 
       <div class="flex items-center gap-2 w-full min-w-0">
-        <div class="flex-1 min-w-0 flex">
-          <p class="flex-1 min-w-0 truncate" :class="isTyping ? 'italic' : ''">
+        <div class="flex-1 min-w-0 flex truncate wrap-break-word">
+          <p
+            class="flex-1 min-w-0 md:text-sm text-xs truncate leading-normal opacity-70"
+            :class="isTyping ? 'italic' : ''"
+          >
             {{ displayMessage }}
           </p>
         </div>
@@ -270,7 +291,7 @@ const onContextMenu = (event: MouseEvent) => {
           <template v-if="isLastOutgoing">
             <i
               v-if="lastMessageStatus === 'failed'"
-              class="pi pi-times-circle text-red-500"
+              class="pi pi-times-circle text-red-700 text-xs!"
               title="Ошибка"
             />
 
@@ -279,44 +300,23 @@ const onContextMenu = (event: MouseEvent) => {
                 lastMessageStatus === 'read' ||
                 lastMessageStatus === 'delivered'
               "
-              class="flex -space-x-3.5"
+              class="flex -space-x-2"
               title="Прочитано"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-                data-slot="icon"
-                class="size-5"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z"
-                  clip-rule="evenodd"
-                ></path>
-              </svg>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-                data-slot="icon"
-                class="size-5"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z"
-                  clip-rule="evenodd"
-                ></path>
-              </svg>
+              <i class="pi pi-check opacity-70 text-xs!" />
+              <i class="pi pi-check opacity-70 text-xs!" />
             </div>
+
             <i
               v-else-if="lastMessageStatus === 'sending'"
-              class="pi pi-clock opacity-50"
+              class="pi pi-clock opacity-50 text-xs!"
               title="Отправка..."
             />
-            <i v-else class="pi pi-check opacity-70" title="Отправлено" />
+            <i
+              v-else
+              class="pi pi-check opacity-70 text-xs!"
+              title="Отправлено"
+            />
           </template>
 
           <Badge

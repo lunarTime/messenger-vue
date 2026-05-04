@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, nextTick, defineAsyncComponent, watch } from "vue";
 import { onClickOutside } from "@vueuse/core";
-
 import { useMessageInput } from "@/features/send-message/model/useMessageInput";
 import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
 import { useTheme } from "@/shared/composables/useTheme";
-
+import { useIsMobile } from "@/shared/composables/useIsMobile";
+import { useMessageCompose } from "@/shared/composables/useMessageCompose";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
 import Message from "primevue/message";
@@ -25,9 +25,11 @@ const {
   handleKeyDown,
   maxLength,
 } = useMessageInput();
+const { isMobile } = useIsMobile();
 
 const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
 const { isDark } = useTheme();
+const messageCompose = useMessageCompose();
 
 const textareaRef = ref<any>(null);
 const isEmojiOpen = ref(false);
@@ -39,17 +41,21 @@ type Emoji = { i: string };
 
 const getTextarea = (): HTMLTextAreaElement | null => {
   const el = textareaRef.value?.$el;
+
   if (!el) return null;
+
   return el.tagName === "TEXTAREA" ? el : el.querySelector("textarea");
 };
 
 const saveCursorPos = () => {
   const el = getTextarea();
+
   if (el) savedCursorPos.value = el.selectionStart;
 };
 
 const onSelectEmoji = async (emoji: Emoji) => {
   const el = getTextarea();
+
   if (!el) return;
 
   const insertAt = savedCursorPos.value ?? message.value.length;
@@ -58,6 +64,7 @@ const onSelectEmoji = async (emoji: Emoji) => {
     message.value.slice(0, insertAt) + emoji.i + message.value.slice(insertAt);
 
   const newPos = insertAt + emoji.i.length;
+
   savedCursorPos.value = newPos;
 
   await nextTick();
@@ -68,6 +75,7 @@ const onSelectEmoji = async (emoji: Emoji) => {
 
 const toggleEmoji = () => {
   saveCursorPos();
+
   isEmojiOpen.value = !isEmojiOpen.value;
 };
 
@@ -100,6 +108,38 @@ watch(isDark, () => {
       </Message>
     </Transition>
 
+    <Transition
+      enter-active-class="transition-all duration-200 ease-out"
+      enter-from-class="opacity-0 -translate-y-2"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition-all duration-150 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 -translate-y-2"
+    >
+      <div
+        v-if="messageCompose.replyContext"
+        class="flex items-center gap-2 px-3 py-2 mb-2 rounded-xl bg-(--p-primary-color)/10 border-l-4 border-(--p-primary-color)"
+      >
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-semibold text-(--p-primary-color) truncate">
+            {{ messageCompose.replyContext.senderName }}
+          </div>
+          <div class="text-xs opacity-60 truncate">
+            {{ messageCompose.replyContext.text }}
+          </div>
+        </div>
+        <Button
+          text
+          rounded
+          icon="pi pi-times"
+          class="w-7! h-7! shrink-0"
+          severity="secondary"
+          @click="messageCompose.clearReply()"
+          aria-label="Отменить ответ"
+        />
+      </div>
+    </Transition>
+
     <div class="flex gap-2">
       <div class="flex-1 relative">
         <Textarea
@@ -112,9 +152,9 @@ watch(isDark, () => {
           @keyup="saveCursorPos"
           @click="saveCursorPos"
           @blur="saveCursorPos"
-          class="block w-full max-h-80 pr-15!"
+          class="block w-full md:text-sm! text-xs! md:max-h-80 max-h-30 pr-15!"
           placeholder="Напишите сообщение..."
-          rows="3"
+          :rows="isMobile ? '3' : '4'"
           fluid
         />
 
@@ -129,7 +169,7 @@ watch(isDark, () => {
           <div
             ref="pickerRef"
             v-if="isEmojiOpen"
-            class="absolute bottom-12 right-0 z-2"
+            class="absolute bottom-16 lg:right-0 -right-10 z-2"
           >
             <EmojiPicker
               :key="pickerKey"

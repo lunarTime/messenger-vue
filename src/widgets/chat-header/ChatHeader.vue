@@ -7,6 +7,7 @@ import {
 } from "@/shared/api/firebase/firestore";
 import type { User } from "@/shared/types/user";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
+import { useIsMobile } from "@/shared/composables/useIsMobile";
 import { useUserStore } from "@/entities/user/store/user.store";
 import Avatar from "primevue/avatar";
 import Button from "primevue/button";
@@ -14,8 +15,11 @@ import { getAvatarColor } from "@/shared/utils/avatarColors";
 import Drawer from "primevue/drawer";
 import GroupChatInfo from "@/features/chat-actions/ui/GroupChatInfo.vue";
 
+defineProps<{ mobile?: boolean }>();
+
 const chatStore = useChatStore();
 const userStore = useUserStore();
+const { isMobile } = useIsMobile();
 const now = useGlobalNow(30000);
 
 let unsubscribeUser: (() => void) | null = null;
@@ -169,19 +173,23 @@ onUnmounted(() => {
 
 <template>
   <div class="sticky top-0 z-10 flex items-center justify-between">
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 min-w-0">
       <Button
+        v-if="mobile"
         @click="chatStore.closeActiveChat"
         icon="pi pi-arrow-left"
         size="small"
-        title="Закрыть чат"
+        title="Назад"
+        text
       />
       <div
-        class="flex items-center gap-2"
-        :class="{ 'cursor-pointer hover:opacity-80 transition-opacity': isGroup }"
+        class="flex items-center gap-2 flex-1 min-w-0"
+        :class="{
+          'cursor-pointer hover:opacity-80 transition-opacity': isGroup,
+        }"
         @click="openChatInformation"
       >
-        <div class="flex relative">
+        <div class="flex relative flex-none">
           <Avatar
             :image="getChatPhotoURL ?? undefined"
             :label="
@@ -196,7 +204,7 @@ onUnmounted(() => {
               isGroup ? 'rounded-xl!' : '',
             ]"
             :shape="isGroup ? 'square' : 'circle'"
-            size="large"
+            :size="isMobile ? 'medium' : 'large'"
             :pt="{
               image: {
                 class: 'object-cover',
@@ -205,18 +213,17 @@ onUnmounted(() => {
           />
           <div
             v-if="isOnline"
-            class="absolute top-0 right-0 w-3 h-3 bg-green-500 border rounded-full"
+            class="absolute top-0 right-0 md:w-3 md:h-3 w-2 h-2 bg-green-500 border rounded-full"
             title="Онлайн"
           />
         </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <h2 class="text-lg font-semibold">
-              {{ chatName }}
-            </h2>
-          </div>
+        <div class="flex flex-col flex-1 min-w-0">
+          <h2 class="truncate md:text-lg text-sm font-semibold leading-none">
+            {{ chatName }}
+          </h2>
+
           <p
-            class="text-sm opacity-70"
+            class="truncate md:text-sm text-xs opacity-70"
             :class="{ 'text-(--p-primary-color) animate-pulse': isTyping }"
           >
             {{ subtitleText }}

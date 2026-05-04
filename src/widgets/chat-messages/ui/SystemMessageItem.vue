@@ -14,6 +14,7 @@ const userStore = useUserStore();
 
 const systemText = computed(() => {
   const data = props.message.systemData;
+
   if (!data) return "";
 
   const isMe = data.actorId === userStore.userId;
@@ -72,12 +73,15 @@ const time = computed(() => {
 <template>
   <div class="flex flex-col items-center justify-center w-full">
     <div
-      class="flex items-start gap-2 px-2 py-1 rounded-xl backdrop-blur-sm leading-0"
+      class="relative flex items-end gap-2 px-2 py-1 pb-6 rounded-xl bg-white/10 leading-0"
     >
       <span class="text-sm font-medium text-center">
         {{ systemText }}
       </span>
-      <span v-if="time" class="ml-2 text-xs opacity-80 pt-0.5">
+      <span
+        v-if="time"
+        class="absolute block bottom-1 right-2 text-xs opacity-80"
+      >
         {{ time }}
       </span>
     </div>
