@@ -8,10 +8,12 @@ import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useMessageActions } from "@/features/message-actions/model/useMessageActions";
 import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
+import { useMessageCompose } from "@/shared/composables/useMessageCompose";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
 import ChatMessageItem from "@/widgets/chat-messages/ui/ChatMessageItem.vue";
 import SystemMessageItem from "@/widgets/chat-messages/ui/SystemMessageItem.vue";
+import ForwardDialog from "@/features/message-actions/ui/ForwardDialog.vue";
 import ProgressSpinner from "primevue/progressspinner";
 import Textarea from "primevue/textarea";
 import Dialog from "primevue/dialog";
@@ -29,6 +31,44 @@ const userStore = useUserStore();
 
 const { editMessage, deleteMessageForMe, deleteMessageForAll } =
   useMessageActions();
+
+const messageCompose = useMessageCompose();
+
+const handleReply = (messageId: string) => {
+  const msg = messageStore.messages.find((m) => m.id === messageId);
+
+  if (!msg || msg.isDeleted) return;
+
+  let senderName = "Вы";
+
+  if (msg.senderId !== userStore.userId) {
+    const participant = chatStore.chatParticipants.get(msg.senderId);
+
+    senderName = participant?.displayName || "Пользователь";
+  }
+
+  messageCompose.setReply({
+    messageId,
+    senderName,
+    text: msg.text,
+  });
+};
+
+const handleForward = (messageId: string) => {
+  const msg = messageStore.messages.find((m) => m.id === messageId);
+
+  if (!msg || msg.isDeleted) return;
+
+  let senderName = "Вы";
+
+  if (msg.senderId !== userStore.userId) {
+    const participant = chatStore.chatParticipants.get(msg.senderId);
+
+    senderName = participant?.displayName || "Пользователь";
+  }
+
+  messageCompose.setForward({ message: msg, senderName });
+};
 
 interface MessageGroup {
   type: "user" | "system";
@@ -114,7 +154,15 @@ const groupedMessages = computed(() => {
 });
 
 const containerRef = ref<HTMLElement | null>(null);
+
 provide("chatScrollContainer", containerRef);
+
+let closeCurrentMenu: (() => void) | null = null;
+
+provide("registerOpenMenu", (hide: () => void) => {
+  closeCurrentMenu?.();
+  closeCurrentMenu = hide;
+});
 const isUserScrolling = ref(false);
 const editDialogVisible = ref(false);
 const editingMessageId = ref<string | null>(null);
@@ -347,15 +395,14 @@ const handleDeleteForAll = (messageId: string) => {
           :key="dateGroup.date"
           class="flex flex-col gap-4"
         >
-          <!-- Sticky Date Header -->
           <div
             class="sticky top-2 z-20 flex justify-center pointer-events-none mb-2"
           >
             <div
-              class="px-3 py-1 rounded-full bg-surface-0/70 dark:bg-surface-900/70 backdrop-blur-md border border-surface-200/50 dark:border-surface-700/50 shadow-sm pointer-events-auto"
+              class="px-2 py-1 rounded-2xl bg-(--p-primary-color)/40 backdrop-blur-md shadow-sm pointer-events-auto"
             >
               <span
-                class="text-[11px] font-bold text-surface-600 dark:text-surface-400 uppercase tracking-wider"
+                class="block text-sm font-bold text-surface-600 dark:text-surface-400"
               >
                 {{ dateGroup.date }}
               </span>
@@ -439,6 +486,8 @@ const handleDeleteForAll = (messageId: string) => {
                   @edit="handleEdit"
                   @delete-for-me="handleDeleteForMe"
                   @delete-for-all="handleDeleteForAll"
+                  @reply="handleReply"
+                  @forward="handleForward"
                 />
               </div>
             </div>
@@ -535,5 +584,7 @@ const handleDeleteForAll = (messageId: string) => {
         />
       </template>
     </Dialog>
+
+    <ForwardDialog />
   </div>
 </template>
