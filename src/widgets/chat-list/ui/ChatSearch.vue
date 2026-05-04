@@ -23,6 +23,8 @@ const {
 const isCreateModalVisible = ref(false);
 
 const onSelect = (event: AutoCompleteOptionSelectEvent) => {
+  searchQuery.value = "";
+
   handleSelectUser(event.value as User);
 };
 
