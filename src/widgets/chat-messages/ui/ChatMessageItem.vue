@@ -8,6 +8,7 @@ import { useIntersectionObserver } from "@/shared/composables/useIntersectionObs
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useSwipeMessage } from "@/shared/composables/useSwipeMessage";
 import { useLongPress } from "@/shared/composables/useLongPress";
+import { useMessageSelection } from "@/features/message-actions/model/useMessageSelection";
 
 const props = defineProps<{
   message: Message;
@@ -22,20 +23,20 @@ const emit = defineEmits<{
   deleteForAll: [messageId: string];
   reply: [messageId: string];
   forward: [messageId: string];
+  select: [messageId: string];
 }>();
 
 const messageStore = useMessageStore();
 const chatStore = useChatStore();
+const selection = useMessageSelection();
 const messageRef = ref<HTMLElement | null>(null);
-const actionsMenuRef = ref<InstanceType<typeof MessageActionsMenu> | null>(
-  null,
-);
 const scrollContainer = inject<Ref<HTMLElement | null>>("chatScrollContainer");
-const registerOpenMenu = inject<(hide: () => void) => void>("registerOpenMenu");
 
 const isOutgoing = computed(
   () => props.message.senderId === props.currentUserId,
 );
+
+const isSelected = computed(() => selection.isSelected(props.message.id));
 
 const sender = computed(() => {
   if (isOutgoing.value) return null;
@@ -79,7 +80,7 @@ const {
   onTouchEnd: swipeTouchEnd,
 } = useSwipeMessage({
   onSwipeLeft: () => {
-    if (!props.message.isDeleted) {
+    if (!props.message.isDeleted && !selection.isActive) {
       emit("reply", props.message.id);
     }
   },
@@ -90,10 +91,13 @@ const {
   onTouchMove: lpTouchMove,
   onTouchEnd: lpTouchEnd,
 } = useLongPress({
-  onLongPress: (pageX: number, pageY: number) => {
-    if (!isSwiping.value) {
-      registerOpenMenu?.(actionsMenuRef.value!.hide);
-      actionsMenuRef.value?.showAt(pageX, pageY);
+  onLongPress: () => {
+    if (!isSwiping.value && !props.message.isDeleted) {
+      if (selection.isActive) {
+        selection.toggle(props.message.id);
+      } else {
+        selection.enter(props.message.id);
+      }
     }
   },
 });
@@ -113,6 +117,12 @@ const onTouchEnd = (e: TouchEvent) => {
   lpTouchEnd();
 };
 
+const handleClick = () => {
+  if (selection.isActive && !props.message.isDeleted) {
+    selection.toggle(props.message.id);
+  }
+};
+
 useIntersectionObserver(
   messageRef,
   () => {
@@ -128,12 +138,18 @@ useIntersectionObserver(
 <template>
   <div
     ref="messageRef"
-    class="flex gap-2 group relative w-full overflow-hidden"
-    :class="isOutgoing ? 'self-end flex-row-reverse' : 'self-start flex-row'"
+    :data-message-id="message.id"
+    class="flex gap-2 group relative w-full overflow-hidden rounded-lg transition-colors duration-150"
+    :class="[
+      isOutgoing ? 'self-end flex-row-reverse' : 'self-start flex-row',
+      isSelected ? 'bg-(--p-primary-color)/20' : '',
+      selection.isActive && !props.message.isDeleted ? 'cursor-pointer' : '',
+    ]"
     @touchstart="onTouchStart"
     @touchmove.passive="onTouchMove"
     @touchend="onTouchEnd"
     @touchcancel="lpTouchEnd"
+    @click="handleClick"
   >
     <div
       class="flex gap-2 items-start lg:max-w-[80%] max-w-[90%] min-w-0 transition-transform"
@@ -141,8 +157,30 @@ useIntersectionObserver(
         isOutgoing ? 'flex-row-reverse' : 'flex-row',
         isSwiping ? 'duration-0' : 'duration-200 ease-out',
       ]"
-      :style="isSwiping ? { transform: `translateX(${swipeOffset}px)` } : {}"
+      :style="
+        isSwiping && !selection.isActive
+          ? { transform: `translateX(${swipeOffset}px)` }
+          : {}
+      "
     >
+      <div
+        v-if="selection.isActive"
+        class="flex items-center self-center shrink-0 mr-1"
+        :class="isOutgoing ? 'order-last ml-1 mr-0' : ''"
+      >
+        <div
+          v-if="!props.message.isDeleted"
+          class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150"
+          :class="
+            isSelected
+              ? 'bg-(--p-primary-color) border-(--p-primary-color)'
+              : 'border-surface-400 dark:border-surface-500'
+          "
+        >
+          <i v-if="isSelected" class="pi pi-check text-white text-[10px]" />
+        </div>
+      </div>
+
       <ChatBubble
         :text="message.text"
         :variant="isOutgoing ? 'outgoing' : 'incoming'"
@@ -159,26 +197,30 @@ useIntersectionObserver(
       />
 
       <MessageActionsMenu
-        v-if="!isOutgoing"
+        v-if="!isOutgoing && !selection.isActive"
         ref="actionsMenuRef"
         :is-outgoing="false"
         :is-deleted="message.isDeleted"
+        :is-forwarded="!!message.forwardedFrom"
         @reply="emit('reply', message.id)"
         @forward="emit('forward', message.id)"
         @delete-for-me="emit('deleteForMe', message.id)"
+        @select="selection.enter(message.id)"
         class="opacity-0 group-hover:opacity-100 transition-opacity"
       />
 
       <MessageActionsMenu
-        v-else
+        v-else-if="!selection.isActive"
         ref="actionsMenuRef"
         :is-outgoing="true"
         :is-deleted="message.isDeleted"
+        :is-forwarded="!!message.forwardedFrom"
         @reply="emit('reply', message.id)"
         @forward="emit('forward', message.id)"
         @edit="emit('edit', message.id)"
         @delete-for-me="emit('deleteForMe', message.id)"
         @delete-for-all="emit('deleteForAll', message.id)"
+        @select="selection.enter(message.id)"
         class="opacity-0 group-hover:opacity-100 transition-opacity"
       />
     </div>
@@ -187,7 +229,9 @@ useIntersectionObserver(
       class="absolute top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-150"
       :class="[
         isOutgoing ? 'left-2' : 'right-2',
-        isSwiping && !message.isDeleted ? 'opacity-60' : 'opacity-0',
+        isSwiping && !message.isDeleted && !selection.isActive
+          ? 'opacity-60'
+          : 'opacity-0',
       ]"
     >
       <i class="pi pi-reply text-surface-400 dark:text-surface-500 text-sm" />
