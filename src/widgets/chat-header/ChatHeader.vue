@@ -14,6 +14,7 @@ import Button from "primevue/button";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
 import Drawer from "primevue/drawer";
 import GroupChatInfo from "@/features/chat-actions/ui/GroupChatInfo.vue";
+import SelectionPanel from "@/features/message-actions/ui/SelectionPanel.vue";
 
 defineProps<{ mobile?: boolean }>();
 
@@ -152,6 +153,7 @@ watch(
   (chatId) => {
     unsubscribeTyping?.();
     unsubscribeTyping = null;
+
     typingUsers.value = [];
 
     if (!chatId) return;
@@ -172,63 +174,71 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="sticky top-0 z-10 flex items-center justify-between">
-    <div class="flex items-center gap-2 min-w-0">
-      <Button
-        @click="chatStore.closeActiveChat"
-        icon="pi pi-arrow-left"
-        size="small"
-        title="Назад"
-        text
-      />
-      <div
-        class="flex items-center gap-2 flex-1 min-w-0"
-        :class="{
-          'cursor-pointer hover:opacity-80 transition-opacity': isGroup,
-        }"
-        @click="openChatInformation"
-      >
-        <div class="flex relative flex-none">
-          <Avatar
-            :image="getChatPhotoURL ?? undefined"
-            :label="
-              getChatPhotoURL || isGroup
-                ? undefined
-                : chatName.charAt(0).toUpperCase()
-            "
-            :icon="!getChatPhotoURL && isGroup ? 'pi pi-users' : undefined"
-            class="overflow-hidden"
-            :class="[
-              getChatPhotoURL ? undefined : avatarBgColor + ' text-white!',
-              isGroup ? 'rounded-xl!' : '',
-            ]"
-            :shape="isGroup ? 'square' : 'circle'"
-            :size="isMobile ? 'medium' : 'large'"
-            :pt="{
-              image: {
-                class: 'object-cover',
-              },
-            }"
+  <div class="sticky top-0 z-10 flex flex-col">
+    <div class="relative flex flex-col">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2 min-w-0">
+          <Button
+            @click="chatStore.closeActiveChat"
+            icon="pi pi-arrow-left"
+            size="small"
+            title="Назад"
+            text
           />
           <div
-            v-if="isOnline"
-            class="absolute top-0 right-0 md:w-3 md:h-3 w-2 h-2 bg-green-500 border rounded-full"
-            title="Онлайн"
-          />
-        </div>
-        <div class="flex flex-col flex-1 min-w-0">
-          <h2 class="truncate md:text-lg text-sm font-semibold leading-none">
-            {{ chatName }}
-          </h2>
-
-          <p
-            class="truncate md:text-sm text-xs opacity-70"
-            :class="{ 'text-(--p-primary-color) animate-pulse': isTyping }"
+            class="flex items-center gap-2 flex-1 min-w-0"
+            :class="{
+              'cursor-pointer hover:opacity-80 transition-opacity': isGroup,
+            }"
+            @click="openChatInformation"
           >
-            {{ subtitleText }}
-          </p>
+            <div class="flex relative flex-none">
+              <Avatar
+                :image="getChatPhotoURL ?? undefined"
+                :label="
+                  getChatPhotoURL || isGroup
+                    ? undefined
+                    : chatName.charAt(0).toUpperCase()
+                "
+                :icon="!getChatPhotoURL && isGroup ? 'pi pi-users' : undefined"
+                class="overflow-hidden"
+                :class="[
+                  getChatPhotoURL ? undefined : avatarBgColor + ' text-white!',
+                  isGroup ? 'rounded-xl!' : '',
+                ]"
+                :shape="isGroup ? 'square' : 'circle'"
+                :size="isMobile ? 'medium' : 'large'"
+                :pt="{
+                  image: {
+                    class: 'object-cover',
+                  },
+                }"
+              />
+              <div
+                v-if="isOnline"
+                class="absolute top-0 right-0 md:w-3 md:h-3 w-2 h-2 bg-green-500 border rounded-full"
+                title="Онлайн"
+              />
+            </div>
+            <div class="flex flex-col flex-1 min-w-0">
+              <h2
+                class="truncate md:text-lg text-sm font-semibold leading-none"
+              >
+                {{ chatName }}
+              </h2>
+
+              <p
+                class="truncate md:text-sm text-xs opacity-70"
+                :class="{ 'text-(--p-primary-color) animate-pulse': isTyping }"
+              >
+                {{ subtitleText }}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
+
+      <SelectionPanel />
     </div>
   </div>
 

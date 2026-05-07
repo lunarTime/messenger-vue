@@ -8,6 +8,7 @@ import ContextMenu from "primevue/contextmenu";
 const props = defineProps<{
   isOutgoing: boolean;
   isDeleted: boolean;
+  isForwarded: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   deleteForAll: [];
   reply: [];
   forward: [];
+  select: [];
 }>();
 
 const menuRef = ref();
@@ -37,13 +39,19 @@ const menuItems = computed<MenuItem[]>(() => {
       command: () => emit("forward"),
     });
 
-    if (props.isOutgoing) {
+    if (props.isOutgoing && !props.isForwarded) {
       items.push({
         label: "Редактировать",
         icon: "pi pi-pencil",
         command: () => emit("edit"),
       });
     }
+
+    items.push({
+      label: "Выбрать",
+      icon: "pi pi-check-circle",
+      command: () => emit("select"),
+    });
 
     items.push({
       label: "Удалить у меня",

@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, computed, provide } from "vue";
+import {
+  ref,
+  watch,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  computed,
+  provide,
+} from "vue";
 import { useScroll, useThrottleFn } from "@vueuse/core";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
@@ -9,6 +17,7 @@ import { useUserStore } from "@/entities/user/store/user.store";
 import { useMessageActions } from "@/features/message-actions/model/useMessageActions";
 import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
 import { useMessageCompose } from "@/shared/composables/useMessageCompose";
+import { useMessageSelection } from "@/features/message-actions/model/useMessageSelection";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
 import ChatMessageItem from "@/widgets/chat-messages/ui/ChatMessageItem.vue";
@@ -28,6 +37,7 @@ const toast = useToast();
 const messageStore = useMessageStore();
 const chatStore = useChatStore();
 const userStore = useUserStore();
+const selection = useMessageSelection();
 
 const { editMessage, deleteMessageForMe, deleteMessageForAll } =
   useMessageActions();
@@ -163,6 +173,70 @@ provide("registerOpenMenu", (hide: () => void) => {
   closeCurrentMenu?.();
   closeCurrentMenu = hide;
 });
+
+let isDragSelecting = false;
+let dragStartMessageId: string | null = null;
+
+const getMessageIdFromElement = (el: Element | null): string | null => {
+  const item = el?.closest("[data-message-id]");
+  return item?.getAttribute("data-message-id") ?? null;
+};
+
+const getMessageIdsBetween = (idA: string, idB: string): string[] => {
+  const ids = messageStore.messages
+    .filter((m) => m.type !== "system" && !m.isDeleted)
+    .map((m) => m.id);
+  const idxA = ids.indexOf(idA);
+  const idxB = ids.indexOf(idB);
+
+  if (idxA === -1 || idxB === -1) return [];
+
+  const [from, to] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
+
+  return ids.slice(from, to + 1);
+};
+
+const onMouseDown = (e: MouseEvent) => {
+  if (e.button !== 0) return;
+
+  const msgId = getMessageIdFromElement(e.target as Element);
+
+  if (!msgId) return;
+
+  if (selection.isActive) return;
+
+  const msg = messageStore.messages.find((m) => m.id === msgId);
+
+  if (msg?.isDeleted) return;
+
+  isDragSelecting = false;
+  dragStartMessageId = msgId;
+};
+
+const onMouseMove = (e: MouseEvent) => {
+  if (!dragStartMessageId || e.buttons !== 1) return;
+
+  const msgId = getMessageIdFromElement(e.target as Element);
+
+  if (!msgId) return;
+
+  if (!isDragSelecting && msgId !== dragStartMessageId) {
+    isDragSelecting = true;
+    selection.enter(dragStartMessageId);
+  }
+
+  if (isDragSelecting) {
+    const range = getMessageIdsBetween(dragStartMessageId, msgId);
+
+    selection.addRange(range);
+  }
+};
+
+const onMouseUp = () => {
+  isDragSelecting = false;
+  dragStartMessageId = null;
+};
+
 const isUserScrolling = ref(false);
 const editDialogVisible = ref(false);
 const editingMessageId = ref<string | null>(null);
@@ -225,6 +299,8 @@ watch(
   async (newChatId, oldChatId) => {
     if (!newChatId || newChatId === oldChatId) return;
 
+    selection.exit();
+
     if (userStore.userId) {
       await markChatAsRead(newChatId, userStore.userId);
     }
@@ -238,11 +314,6 @@ watch(
   },
   { immediate: true },
 );
-
-onMounted(async () => {
-  await nextTick();
-  await scrollToBottom(false);
-});
 
 const handleEdit = (messageId: string) => {
   const message = messageStore.messages.find((m) => m.id === messageId);
@@ -349,6 +420,23 @@ const handleDeleteForAll = (messageId: string) => {
     },
   });
 };
+
+const onKeyDown = (e: KeyboardEvent) => {
+  if (e.key === "Escape" && selection.isActive) {
+    selection.exit();
+  }
+};
+
+onMounted(async () => {
+  window.addEventListener("keydown", onKeyDown);
+
+  await nextTick();
+  await scrollToBottom(false);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("keydown", onKeyDown);
+});
 </script>
 
 <template>
@@ -387,7 +475,11 @@ const handleDeleteForAll = (messageId: string) => {
     <div
       v-if="showContent"
       ref="containerRef"
-      class="h-full overflow-y-auto overflow-x-hidden pr-2"
+      class="h-full overflow-y-auto overflow-x-hidden pr-2 select-none"
+      @mousedown="onMouseDown"
+      @mousemove="onMouseMove"
+      @mouseup="onMouseUp"
+      @mouseleave="onMouseUp"
     >
       <div class="flex flex-col gap-6">
         <div

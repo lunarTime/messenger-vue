@@ -5,7 +5,7 @@ import { useUserStore } from "@/entities/user/store/user.store";
 import { useMessageCompose } from "@/shared/composables/useMessageCompose";
 import {
   getOrCreateDirectChat,
-  sendMessage as sendFirebaseMessage,
+  sendMessagesBatch,
 } from "@/shared/api/firebase/firestore";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
@@ -24,6 +24,10 @@ const toast = useToast();
 
 const isForwarding = ref(false);
 const searchQuery = ref("");
+
+const isVisible = computed(
+  () => !!messageCompose.forwardContext || !!messageCompose.forwardManyContext,
+);
 
 const filteredChats = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
@@ -59,33 +63,56 @@ function getChatAvatarColor(chat: Chat): string {
   return getAvatarColor(chat.id);
 }
 
-const handleForward = async (targetChat: Chat) => {
-  const ctx = messageCompose.forwardContext;
+const resolveTargetChatId = async (targetChat: Chat): Promise<string> => {
+  if (targetChat.type === "direct") {
+    const otherId = targetChat.participants.find(
+      (id) => id !== userStore.userId,
+    );
 
-  if (!ctx || !userStore.userId) return;
+    if (otherId) {
+      return getOrCreateDirectChat(userStore.userId!, otherId);
+    }
+  }
+  return targetChat.id;
+};
+
+const handleForward = async (targetChat: Chat) => {
+  if (!userStore.userId) return;
 
   isForwarding.value = true;
 
   try {
-    let targetChatId = targetChat.id;
+    const targetChatId = await resolveTargetChatId(targetChat);
 
-    if (targetChat.type === "direct") {
-      const otherId = targetChat.participants.find(
-        (id) => id !== userStore.userId,
-      );
+    let messagesToSend: { text: string; forwardedFrom?: string }[];
 
-      if (otherId) {
-        targetChatId = await getOrCreateDirectChat(userStore.userId, otherId);
-      }
+    if (messageCompose.forwardManyContext) {
+      messagesToSend = messageCompose.forwardManyContext.map((msg) => ({
+        text: sanitizeText(msg.text, {
+          maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+        }),
+        forwardedFrom:
+          msg.senderId === userStore.userId
+            ? "Вы"
+            : chatStore.chatParticipants.get(msg.senderId)?.displayName ||
+              "Пользователь",
+      }));
+    } else {
+      const ctx = messageCompose.forwardContext;
+
+      if (!ctx) return;
+
+      messagesToSend = [
+        {
+          text: sanitizeText(ctx.message.text, {
+            maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+          }),
+          forwardedFrom: ctx.senderName,
+        },
+      ];
     }
 
-    const forwardedText = sanitizeText(ctx.message.text, {
-      maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
-    });
-
-    await sendFirebaseMessage(targetChatId, userStore.userId, forwardedText, {
-      forwardedFrom: ctx.senderName,
-    });
+    await sendMessagesBatch(targetChatId, userStore.userId, messagesToSend);
 
     messageCompose.clearForward();
     searchQuery.value = "";
@@ -93,7 +120,7 @@ const handleForward = async (targetChat: Chat) => {
     toast.add({
       severity: "success",
       summary: "Переслано",
-      detail: `Сообщение переслано в чат «${getChatName(targetChat)}»`,
+      detail: `Переслано в чат «${getChatName(targetChat)}»`,
       life: VALIDATION_CONFIG.TOAST.LIFE_TIME,
     });
   } catch {
@@ -116,7 +143,7 @@ const close = () => {
 
 <template>
   <Dialog
-    :visible="!!messageCompose.forwardContext"
+    :visible="isVisible"
     @update:visible="(v) => !v && close()"
     modal
     header="Переслать сообщение"
@@ -125,7 +152,23 @@ const close = () => {
   >
     <div class="flex flex-col gap-3">
       <div
-        v-if="messageCompose.forwardContext"
+        v-if="messageCompose.forwardManyContext"
+        class="rounded-xl px-3 py-2 bg-(--p-primary-color)/10 border border-(--p-primary-color)/20 text-sm"
+      >
+        <div class="font-semibold text-(--p-primary-color) text-xs">
+          {{ messageCompose.forwardManyContext.length }}
+          {{
+            messageCompose.forwardManyContext.length === 1
+              ? "сообщение"
+              : messageCompose.forwardManyContext.length < 5
+                ? "сообщения"
+                : "сообщений"
+          }}
+        </div>
+      </div>
+
+      <div
+        v-else-if="messageCompose.forwardContext"
         class="rounded-xl px-3 py-2 bg-(--p-primary-color)/10 border border-(--p-primary-color)/20 text-sm"
       >
         <div class="font-semibold text-(--p-primary-color) text-xs mb-0.5">

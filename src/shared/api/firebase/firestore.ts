@@ -1262,6 +1262,72 @@ export async function deleteMessageForAll(
   }
 }
 
+export async function sendMessagesBatch(
+  chatId: string,
+  senderId: string,
+  messages: { text: string; forwardedFrom?: string }[],
+): Promise<void> {
+  if (!chatId || !senderId || !messages.length)
+    throw new Error("Invalid parameters");
+
+  const chatDoc = await getDoc(doc(db, "chats", chatId));
+  const participants = chatDoc.exists()
+    ? ((chatDoc.data() as Chat).participants || [])
+    : [];
+  const otherParticipants = participants.filter((id) => id !== senderId);
+
+  const sanitized = messages.map((m) => ({
+    text: sanitizeText(m.text, {
+      allowBasicHtml: false,
+      maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+      stripNewlines: false,
+      normalizeSpaces: true,
+    }),
+    forwardedFrom: m.forwardedFrom,
+  })).filter((m) => m.text.length > 0);
+
+  if (!sanitized.length) throw new Error("No valid messages to send");
+
+  const messageRefs = await Promise.all(
+    sanitized.map((m) => {
+      const data: Record<string, unknown> = {
+        chatId,
+        senderId,
+        type: "text" as const,
+        text: m.text,
+        isEdited: false,
+        isDeleted: false,
+        createdAt: serverTimestamp(),
+      };
+      if (m.forwardedFrom) data.forwardedFrom = m.forwardedFrom;
+      return addDoc(collection(db, "chats", chatId, "messages"), data);
+    }),
+  );
+
+  const lastRef = messageRefs[messageRefs.length - 1]!;
+  const lastText = sanitized[sanitized.length - 1]!.text;
+
+  await Promise.allSettled([
+    updateDoc(doc(db, "chats", chatId), {
+      lastMessage: {
+        id: lastRef.id,
+        text: lastText,
+        senderId,
+        createdAt: serverTimestamp(),
+      },
+      updatedAt: serverTimestamp(),
+    }),
+    ...messageRefs.flatMap((ref) =>
+      otherParticipants.map((participantId) =>
+        setMessageDeliveryStatus(ref.id, chatId, participantId, "sent"),
+      ),
+    ),
+    ...otherParticipants.map((participantId) =>
+      incrementUnreadCount(chatId, participantId),
+    ),
+  ]);
+}
+
 export function subscribeToMessageDeletedForUser(
   chatId: string,
   messageId: string,
