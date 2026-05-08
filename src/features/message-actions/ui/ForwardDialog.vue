@@ -84,7 +84,11 @@ const handleForward = async (targetChat: Chat) => {
   try {
     const targetChatId = await resolveTargetChatId(targetChat);
 
-    let messagesToSend: { text: string; forwardedFrom?: string }[];
+    let messagesToSend: {
+      text: string;
+      forwardedFrom?: string;
+      attachments?: import("@/shared/types/message").MessageAttachment[];
+    }[];
 
     if (messageCompose.forwardManyContext) {
       messagesToSend = messageCompose.forwardManyContext.map((msg) => ({
@@ -96,6 +100,7 @@ const handleForward = async (targetChat: Chat) => {
             ? "Вы"
             : chatStore.chatParticipants.get(msg.senderId)?.displayName ||
               "Пользователь",
+        attachments: msg.attachments,
       }));
     } else {
       const ctx = messageCompose.forwardContext;
@@ -108,6 +113,7 @@ const handleForward = async (targetChat: Chat) => {
             maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
           }),
           forwardedFrom: ctx.senderName,
+          attachments: ctx.message.attachments,
         },
       ];
     }
@@ -134,6 +140,27 @@ const handleForward = async (targetChat: Chat) => {
     isForwarding.value = false;
   }
 };
+
+function pluralAttachments(n: number): string {
+  if (n % 10 === 1 && n % 100 !== 11) return `${n} вложение`;
+  if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20))
+    return `${n} вложения`;
+
+  return `${n} вложений`;
+}
+
+const forwardPreviewText = computed(() => {
+  const msg = messageCompose.forwardContext?.message;
+
+  if (!msg) return "";
+
+  const count = msg.attachments?.length ?? 0;
+
+  if (!msg.text && count > 0) return pluralAttachments(count);
+  if (msg.text && count > 0) return `${msg.text} (${pluralAttachments(count)})`;
+
+  return msg.text;
+});
 
 const close = () => {
   messageCompose.clearForward();
@@ -174,9 +201,7 @@ const close = () => {
         <div class="font-semibold text-(--p-primary-color) text-xs mb-0.5">
           {{ messageCompose.forwardContext.senderName }}
         </div>
-        <div class="truncate opacity-70">
-          {{ messageCompose.forwardContext.message.text }}
-        </div>
+        <div class="truncate opacity-70">{{ forwardPreviewText }}</div>
       </div>
 
       <InputText
