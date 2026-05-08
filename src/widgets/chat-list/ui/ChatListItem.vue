@@ -1,17 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch, onUnmounted } from "vue";
+import { computed, ref, watch } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useTimeAgo } from "@/shared/composables/useTimeAgo";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
 import { useLongPress } from "@/shared/composables/useLongPress";
 import { useIsMobile } from "@/shared/composables/useIsMobile";
-import {
-  subscribeToMessageDeliveryStatus,
-  subscribeToTyping,
-} from "@/shared/api/firebase/firestore";
 import type { Timestamp } from "firebase/firestore";
-import type { MessageStatus } from "@/shared/types/message";
 import ChatContextMenu from "@/features/chat-actions/ui/ChatContextMenu.vue";
 import Avatar from "primevue/avatar";
 import Badge from "primevue/badge";
@@ -31,6 +26,7 @@ const props = defineProps<{
   active?: boolean;
   unreadCount?: number;
   openContextChatId?: string | null;
+  typingUsers?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -43,11 +39,9 @@ const userStore = useUserStore();
 const now = useGlobalNow(30000);
 const contextMenuRef = ref<InstanceType<typeof ChatContextMenu> | null>(null);
 
-let unsubscribeTyping: (() => void) | null = null;
-let unsubscribeLastStatus: (() => void) | null = null;
-
-const typingUsers = ref<string[]>([]);
-const lastMessageStatus = ref<MessageStatus | null>(null);
+const lastMessageStatus = computed(
+  () => chatStore.lastMessageStatuses.get(props.chatId) ?? null,
+);
 
 const chat = computed(() =>
   chatStore.chats.find((c: any) => c.id === props.chatId),
@@ -88,23 +82,23 @@ const isOnline = computed(() => {
   return false;
 });
 
-const isTyping = computed(() => {
-  if (isGroup.value) return typingUsers.value.length > 0;
+const activeTypingUsers = computed(() => props.typingUsers ?? []);
 
-  return typingUsers.value.includes(props.otherUserId);
+const isTyping = computed(() => {
+  if (isGroup.value) return activeTypingUsers.value.length > 0;
+
+  return activeTypingUsers.value.includes(props.otherUserId);
 });
 
 const typingText = computed(() => {
-  if (!isTyping.value || typingUsers.value.length === 0) return "";
+  if (!isTyping.value || activeTypingUsers.value.length === 0) return "";
 
   if (isGroup.value) {
-    if (typingUsers.value.length === 1) {
-      const userId = typingUsers.value[0] as string;
+    if (activeTypingUsers.value.length === 1) {
+      const userId = activeTypingUsers.value[0] as string;
       const user = chatStore.chatParticipants.get(userId);
-
       return `${user?.displayName || "Кто-то"} печатает...`;
     }
-
     return "Несколько человек печатают...";
   }
 
@@ -115,84 +109,16 @@ const displayDate = useTimeAgo(props.date ?? null);
 const isPinned = computed(() => chatStore.isChatPinned(props.chatId));
 const isLastOutgoing = computed(() => {
   const myId = userStore.userId;
-
-  if (!myId) return false;
-  if (!props.lastMessage) return false;
+  if (!myId || !props.lastMessage) return false;
 
   return props.lastMessage.senderId === myId;
 });
 
 const displayMessage = computed(() => {
-  if (isTyping.value) {
-    return typingText.value;
-  }
+  if (isTyping.value) return typingText.value;
 
-  if (props.lastMessage?.text) {
-    return props.lastMessage.text;
-  }
-
-  return "Нет сообщений";
+  return props.lastMessage?.text || "Нет сообщений";
 });
-
-watch(
-  () => props.chatId,
-  (chatId) => {
-    unsubscribeTyping?.();
-    unsubscribeTyping = null;
-    unsubscribeLastStatus?.();
-    unsubscribeLastStatus = null;
-    lastMessageStatus.value = null;
-
-    if (!chatId) {
-      return;
-    }
-
-    unsubscribeTyping = subscribeToTyping(chatId, (users) => {
-      typingUsers.value = users.filter((id) => id !== userStore.userId);
-    });
-  },
-  {
-    immediate: true,
-  },
-);
-
-watch(
-  () =>
-    [
-      props.chatId,
-      props.lastMessage?.id,
-      props.otherUserId,
-      isLastOutgoing.value,
-    ] as const,
-  ([chatId, lastMessageId, otherUserId, outgoing], old) => {
-    const sameMessage =
-      old &&
-      old[0] === chatId &&
-      old[1] === lastMessageId &&
-      old[2] === otherUserId &&
-      old[3] === outgoing;
-
-    if (sameMessage) return;
-
-    unsubscribeLastStatus?.();
-    unsubscribeLastStatus = null;
-
-    if (!outgoing || !chatId || !lastMessageId || !otherUserId) {
-      lastMessageStatus.value = null;
-      return;
-    }
-
-    unsubscribeLastStatus = subscribeToMessageDeliveryStatus(
-      lastMessageId,
-      chatId,
-      otherUserId,
-      (status) => {
-        lastMessageStatus.value = status;
-      },
-    );
-  },
-  { immediate: true },
-);
 
 watch(
   () => props.openContextChatId,
@@ -203,19 +129,16 @@ watch(
   },
 );
 
-onUnmounted(() => {
-  unsubscribeTyping?.();
-  unsubscribeLastStatus?.();
-});
-
 const onContextMenu = (event: MouseEvent) => {
   emit("contextOpen", props.chatId);
+
   contextMenuRef.value?.show(event);
 };
 
 const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
   onLongPress: (pageX: number, pageY: number) => {
     emit("contextOpen", props.chatId);
+
     contextMenuRef.value?.show({
       pageX,
       pageY,
