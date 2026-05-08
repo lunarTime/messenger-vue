@@ -1,4 +1,4 @@
-import { ref, computed } from "vue";
+import { ref, computed, onUnmounted } from "vue";
 import {
   uploadFileToCloudinary,
   validateFile,
@@ -38,13 +38,23 @@ export function useFileUpload(chatId: () => string | null) {
       .map((f) => f.attachment!),
   );
 
+  function updateFile(id: string, patch: Partial<PendingFile>) {
+    const idx = pendingFiles.value.findIndex((f) => f.id === id);
+
+    if (idx === -1) return;
+
+    pendingFiles.value[idx] = {
+      ...pendingFiles.value[idx]!,
+      ...patch,
+    } as PendingFile;
+  }
+
   async function uploadSingle(pf: PendingFile): Promise<void> {
     const activeChatId = chatId();
 
     if (!activeChatId) return;
 
-    pf.status = "uploading";
-    pf.error = null;
+    updateFile(pf.id, { status: "uploading", error: null });
 
     try {
       const attachment = await uploadFileToCloudinary(
@@ -52,15 +62,15 @@ export function useFileUpload(chatId: () => string | null) {
         activeChatId,
         pf.id,
         (progress) => {
-          pf.progress = progress;
+          updateFile(pf.id, { progress });
         },
       );
-      pf.attachment = attachment;
-      pf.progress = 100;
-      pf.status = "done";
+      updateFile(pf.id, { attachment, progress: 100, status: "done" });
     } catch (err) {
-      pf.status = "error";
-      pf.error = err instanceof Error ? err.message : "Ошибка загрузки";
+      updateFile(pf.id, {
+        status: "error",
+        error: err instanceof Error ? err.message : "Ошибка загрузки",
+      });
     }
   }
 
@@ -166,6 +176,10 @@ export function useFileUpload(chatId: () => string | null) {
 
     await uploadSingle(pf);
   }
+
+  onUnmounted(() => {
+    clearAll();
+  });
 
   return {
     pendingFiles,
