@@ -46,6 +46,7 @@ const showDeliveryStatus = computed(() => isOutgoing.value && !props.deleted);
 const deliveryIcon = computed(() => {
   if (!showDeliveryStatus.value) return null;
 
+  if (props.deliveryStatus === "sending") return "sending";
   if (props.deliveryStatus === "failed") return "failed";
   if (props.deliveryStatus === "read") return "read";
   if (props.deliveryStatus === "delivered") return "delivered";
@@ -109,16 +110,20 @@ const deliveryIcon = computed(() => {
           </span>
 
           <div v-if="deliveryIcon" class="flex items-center">
+            <i
+              v-if="deliveryIcon === 'sending'"
+              class="pi pi-clock opacity-70 text-[0.5rem]!"
+              title="Отправляется"
+            />
+
             <XCircleIcon
-              v-if="deliveryIcon === 'failed'"
+              v-else-if="deliveryIcon === 'failed'"
               class="size-4 text-red-500"
               title="Не отправлено"
             />
 
             <div
-              v-else-if="
-                deliveryIcon === 'read' || deliveryIcon === 'delivered'
-              "
+              v-else-if="deliveryIcon === 'read' || deliveryIcon === 'delivered'"
               class="flex space-x-[-4px]"
               title="Прочитано"
             >
