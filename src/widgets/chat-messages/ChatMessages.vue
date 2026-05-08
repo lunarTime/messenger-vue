@@ -17,6 +17,7 @@ import { useUserStore } from "@/entities/user/store/user.store";
 import { useMessageActions } from "@/features/message-actions/model/useMessageActions";
 import { useMessageCompose } from "@/shared/composables/useMessageCompose";
 import { useMessageSelection } from "@/features/message-actions/model/useMessageSelection";
+import { useMessageGrouping } from "@/shared/composables/useMessageGrouping";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
 import ChatMessageItem from "@/widgets/chat-messages/ui/ChatMessageItem.vue";
@@ -28,6 +29,8 @@ import Button from "primevue/button";
 import Avatar from "primevue/avatar";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
 import { markChatAsRead } from "@/shared/api/firebase/firestore";
+import { useMessageQueue } from "@/features/send-message/model/useMessageQueue";
+import ChatBubble from "@/shared/ui/ChatBubble.vue";
 
 const confirm = useConfirm();
 const toast = useToast();
@@ -35,6 +38,7 @@ const messageStore = useMessageStore();
 const chatStore = useChatStore();
 const userStore = useUserStore();
 const selection = useMessageSelection();
+const messageQueue = useMessageQueue();
 
 const { editMessage, deleteMessageForMe, deleteMessageForAll } =
   useMessageActions();
@@ -77,90 +81,12 @@ const handleForward = (messageId: string) => {
   messageCompose.setForward({ message: msg, senderName });
 };
 
-interface MessageGroup {
-  type: "user" | "system";
-  senderId?: string;
-  messages: typeof messageStore.messages;
-}
-
-interface DateGroup {
-  date: string;
-  groups: MessageGroup[];
-}
-
-const formatDateLabel = (date: Date) => {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today);
-
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const messageDate = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  );
-
-  if (messageDate.getTime() === today.getTime()) return "Сегодня";
-  if (messageDate.getTime() === yesterday.getTime()) return "Вчера";
-
-  const options: Intl.DateTimeFormatOptions = {
-    day: "numeric",
-    month: "long",
-  };
-
-  if (date.getFullYear() !== now.getFullYear()) {
-    options.year = "numeric";
-  }
-
-  return date.toLocaleDateString("ru-RU", options);
-};
-
-const groupedMessages = computed(() => {
-  const dateGroups: DateGroup[] = [];
-
-  messageStore.messages.forEach((message) => {
-    if (!message.createdAt) return;
-
-    const date = message.createdAt.toDate();
-    const dateLabel = formatDateLabel(date);
-
-    let dateGroup = dateGroups.find((dg) => dg.date === dateLabel);
-
-    if (!dateGroup) {
-      dateGroup = { date: dateLabel, groups: [] };
-      dateGroups.push(dateGroup);
-    }
-
-    let currentGroup =
-      dateGroup.groups.length > 0
-        ? dateGroup.groups[dateGroup.groups.length - 1]
-        : null;
-
-    if (message.type === "system") {
-      dateGroup.groups.push({
-        type: "system",
-        messages: [message],
-      });
-    } else if (
-      currentGroup &&
-      currentGroup.type === "user" &&
-      currentGroup.senderId === message.senderId
-    ) {
-      currentGroup.messages.push(message);
-    } else {
-      dateGroup.groups.push({
-        type: "user",
-        senderId: message.senderId,
-        messages: [message],
-      });
-    }
-  });
-
-  return dateGroups;
-});
+const { groupedMessages } = useMessageGrouping(
+  computed(() => messageStore.messages),
+);
 
 const containerRef = ref<HTMLElement | null>(null);
+const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 
 provide("chatScrollContainer", containerRef);
 
@@ -253,7 +179,9 @@ const editingText = ref("");
 const editingAttachments = ref<
   import("@/shared/types/message").MessageAttachment[]
 >([]);
-const hasMessages = computed(() => messageStore.messages.length > 0);
+const hasMessages = computed(
+  () => messageStore.messages.length > 0 || messageQueue.queue.length > 0,
+);
 const showContent = computed(
   () => !messageStore.isLoading && hasMessages.value,
 );
@@ -287,6 +215,17 @@ watch(arrivedState, (state) => {
 });
 
 watch(
+  () => messageQueue.queue.length,
+  async (newLen, oldLen) => {
+    if (newLen > oldLen) {
+      await scrollToBottom(true);
+    }
+  },
+);
+
+const previousLastMessageId = ref<string | null>(null);
+
+watch(
   () => messageStore.messages.length,
   async (newLength, oldLength) => {
     if (newLength === 0) return;
@@ -296,6 +235,16 @@ watch(
 
       if (chatStore.activeChatId && userStore.userId) {
         await markChatAsRead(chatStore.activeChatId, userStore.userId);
+      }
+
+      const isNewMessageAdded = lastMessage?.id !== previousLastMessageId.value;
+      const isFirstMessageChanged =
+        oldLength > 0 && previousLastMessageId.value !== null;
+
+      previousLastMessageId.value = lastMessage?.id || null;
+
+      if (!isNewMessageAdded && isFirstMessageChanged) {
+        return;
       }
 
       if (lastMessage?.senderId === userStore.userId || arrivedState.bottom) {
@@ -311,6 +260,7 @@ watch(
     if (!newChatId || newChatId === oldChatId) return;
 
     selection.exit();
+    previousLastMessageId.value = null;
 
     if (userStore.userId) {
       await markChatAsRead(newChatId, userStore.userId);
@@ -325,6 +275,41 @@ watch(
   },
   { immediate: true },
 );
+
+let sentinelObserver: IntersectionObserver | null = null;
+
+const setupSentinelObserver = () => {
+  sentinelObserver?.disconnect();
+  sentinelObserver = null;
+
+  if (!loadMoreSentinelRef.value || !containerRef.value) return;
+
+  sentinelObserver = new IntersectionObserver(
+    async (entries) => {
+      if (!entries[0]?.isIntersecting) return;
+      if (messageStore.isLoadingMore || !messageStore.hasMore) return;
+
+      const container = containerRef.value!;
+      const prevScrollHeight = container.scrollHeight;
+
+      await messageStore.loadMoreMessages();
+      await nextTick();
+
+      container.scrollTop += container.scrollHeight - prevScrollHeight;
+    },
+    { root: containerRef.value, threshold: 0.1 },
+  );
+
+  sentinelObserver.observe(loadMoreSentinelRef.value);
+};
+
+watch(showContent, async (val) => {
+  if (!val) return;
+
+  await nextTick();
+
+  setupSentinelObserver();
+});
 
 const handleEdit = (messageId: string) => {
   const message = messageStore.messages.find((m) => m.id === messageId);
@@ -443,6 +428,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeyDown);
+  sentinelObserver?.disconnect();
 });
 </script>
 
@@ -489,106 +475,142 @@ onUnmounted(() => {
       @mouseleave="onMouseUp"
     >
       <div class="flex flex-col gap-6">
-        <div
-          v-for="dateGroup in groupedMessages"
-          :key="dateGroup.date"
-          class="flex flex-col gap-4"
-        >
+        <div ref="loadMoreSentinelRef" class="h-1 w-full">
           <div
-            class="sticky top-2 z-20 flex justify-center pointer-events-none mb-2"
+            v-if="messageStore.isLoadingMore"
+            class="flex justify-center py-2"
           >
-            <div
-              class="px-2 py-1 rounded-2xl bg-(--p-primary-color)/40 backdrop-blur-md shadow-sm pointer-events-auto"
-            >
-              <span
-                class="block text-sm font-bold text-surface-600 dark:text-surface-400"
-              >
-                {{ dateGroup.date }}
-              </span>
-            </div>
+            <ProgressSpinner style="width: 24px; height: 24px" />
           </div>
+        </div>
 
-          <div
-            v-for="(group, groupIndex) in dateGroup.groups"
-            :key="(group.senderId || 'system') + groupIndex"
-            class="flex flex-col gap-1"
-          >
-            <template v-if="group.type === 'system'">
-              <SystemMessageItem
-                v-for="message in group.messages"
-                :key="message.id"
-                :message="message"
-              />
-            </template>
-
+        <template v-for="dateGroup in groupedMessages" :key="dateGroup.date">
+          <div class="flex flex-col gap-4">
             <div
-              v-else
-              class="flex gap-2 w-full"
-              :class="
-                group.senderId === userStore.userId
-                  ? 'flex-row-reverse'
-                  : 'flex-row'
-              "
+              class="sticky top-2 z-20 flex justify-center pointer-events-none mb-2"
             >
               <div
-                v-if="
-                  chatStore.activeChat?.type === 'group' &&
-                  group.senderId !== userStore.userId
-                "
-                class="w-fit shrink-0 relative"
+                class="px-2 py-1 rounded-2xl bg-(--p-primary-color)/40 backdrop-blur-md shadow-sm pointer-events-auto"
               >
-                <div class="sticky bottom-0 top-0 h-8">
-                  <Avatar
-                    :image="
-                      chatStore.chatParticipants.get(group.senderId!)
-                        ?.photoURL ?? undefined
+                <span
+                  class="block text-sm font-bold text-surface-600 dark:text-surface-400"
+                >
+                  {{ dateGroup.date }}
+                </span>
+              </div>
+            </div>
+
+            <div
+              v-for="(group, groupIndex) in dateGroup.groups"
+              :key="(group.senderId || 'system') + groupIndex"
+              class="flex flex-col gap-1"
+            >
+              <template v-if="group.type === 'system'">
+                <SystemMessageItem
+                  v-for="message in group.messages"
+                  :key="message.id"
+                  :message="message"
+                />
+              </template>
+
+              <div
+                v-else
+                class="flex gap-2 w-full"
+                :class="
+                  group.senderId === userStore.userId
+                    ? 'flex-row-reverse'
+                    : 'flex-row'
+                "
+              >
+                <div
+                  v-if="
+                    chatStore.activeChat?.type === 'group' &&
+                    group.senderId !== userStore.userId
+                  "
+                  class="w-fit shrink-0 relative"
+                >
+                  <div class="sticky bottom-0 top-0 h-8">
+                    <Avatar
+                      :image="
+                        chatStore.chatParticipants.get(group.senderId!)
+                          ?.photoURL ?? undefined
+                      "
+                      :label="
+                        chatStore.chatParticipants.get(group.senderId!)
+                          ?.photoURL
+                          ? undefined
+                          : (
+                              chatStore.chatParticipants
+                                .get(group.senderId!)
+                                ?.displayName?.charAt(0) || '?'
+                            ).toUpperCase()
+                      "
+                      :class="[
+                        chatStore.chatParticipants.get(group.senderId!)
+                          ?.photoURL
+                          ? undefined
+                          : getAvatarColor(group.senderId!) + ' text-white!',
+                      ]"
+                      shape="circle"
+                      size="normal"
+                    />
+                  </div>
+                </div>
+
+                <div
+                  class="flex flex-col gap-1 flex-1 min-w-0"
+                  :class="
+                    group.senderId === userStore.userId
+                      ? 'items-end'
+                      : 'items-start'
+                  "
+                >
+                  <ChatMessageItem
+                    v-for="(message, index) in group.messages"
+                    :key="message.id"
+                    :message="message"
+                    :current-user-id="userStore.userId!"
+                    :is-group="chatStore.activeChat?.type === 'group'"
+                    :show-sender-name="
+                      chatStore.activeChat?.type === 'group' &&
+                      group.senderId !== userStore.userId &&
+                      index === 0
                     "
-                    :label="
-                      chatStore.chatParticipants.get(group.senderId!)?.photoURL
-                        ? undefined
-                        : (
-                            chatStore.chatParticipants
-                              .get(group.senderId!)
-                              ?.displayName?.charAt(0) || '?'
-                          ).toUpperCase()
-                    "
-                    :class="[
-                      chatStore.chatParticipants.get(group.senderId!)?.photoURL
-                        ? undefined
-                        : getAvatarColor(group.senderId!) + ' text-white!',
-                    ]"
-                    shape="circle"
-                    size="normal"
+                    @edit="handleEdit"
+                    @delete-for-me="handleDeleteForMe"
+                    @delete-for-all="handleDeleteForAll"
+                    @reply="handleReply"
+                    @forward="handleForward"
                   />
                 </div>
               </div>
+            </div>
+          </div>
+        </template>
 
-              <div
-                class="flex flex-col gap-1 flex-1 min-w-0"
-                :class="
-                  group.senderId === userStore.userId
-                    ? 'items-end'
-                    : 'items-start'
+        <div v-if="messageQueue.queue.length" class="flex flex-col gap-1">
+          <div
+            v-for="item in messageQueue.queue"
+            :key="item.id"
+            class="flex flex-row-reverse w-full"
+          >
+            <div class="flex flex-col items-end gap-1 flex-1 min-w-0">
+              <ChatBubble
+                :text="item.text"
+                variant="outgoing"
+                :created-at="null"
+                :delivery-status="
+                  item.status === 'failed' ? 'failed' : 'sending'
                 "
+                :attachments="item.options.attachments"
+              />
+              <button
+                v-if="item.status === 'failed'"
+                class="text-xs text-red-400 hover:text-red-300 transition-colors px-1"
+                @click="messageQueue.retry(item.id)"
               >
-                <ChatMessageItem
-                  v-for="(message, index) in group.messages"
-                  :key="message.id"
-                  :message="message"
-                  :current-user-id="userStore.userId!"
-                  :is-group="chatStore.activeChat?.type === 'group'"
-                  :show-sender-name="
-                    chatStore.activeChat?.type === 'group' &&
-                    group.senderId !== userStore.userId &&
-                    index === 0
-                  "
-                  @edit="handleEdit"
-                  @delete-for-me="handleDeleteForMe"
-                  @delete-for-all="handleDeleteForAll"
-                  @reply="handleReply"
-                  @forward="handleForward"
-                />
-              </div>
+                Повторить
+              </button>
             </div>
           </div>
         </div>
