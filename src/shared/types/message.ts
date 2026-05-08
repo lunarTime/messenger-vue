@@ -6,7 +6,7 @@ export type MessageStatus =
   | "delivered"
   | "read"
   | "failed";
-type MessageAttachmentTypes = "image" | "file" | "video" | "audio";
+export type MessageAttachmentTypes = "image" | "file" | "video" | "audio";
 
 export interface Message {
   id: string;
@@ -95,6 +95,7 @@ export interface SystemMessageData {
 export interface SendMessageOptions {
   replyToMessageId?: string;
   forwardedFrom?: string;
+  attachments?: MessageAttachment[];
 }
 
 export interface ReplyContext {
