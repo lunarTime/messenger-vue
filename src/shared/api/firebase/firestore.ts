@@ -25,11 +25,13 @@ import { db } from "./index";
 import type { Chat, ChatMemberRole } from "@/shared/types/chat";
 import type {
   Message,
+  MessageAttachment,
   MessageStatus,
   SystemMessageEventType,
   SystemMessageData,
   SendMessageOptions,
 } from "@/shared/types/message";
+import { lastMessageText as formatLastMessageText } from "@/shared/lib/message/attachmentText";
 import type { User } from "@/shared/types/user";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
@@ -548,7 +550,7 @@ export function subscribeToUserChats(
     q,
     (snapshot) => {
       const chats = snapshot.docs.map((doc) => {
-        const data = doc.data();
+        const data = doc.data({ serverTimestamps: "estimate" });
 
         return {
           id: doc.id,
@@ -578,17 +580,19 @@ export async function sendMessage(
   text: string,
   options: SendMessageOptions = {},
 ): Promise<string> {
-  if (!chatId || !senderId || !text?.trim())
+  const hasAttachments = options.attachments && options.attachments.length > 0;
+
+  if (!chatId || !senderId || (!text?.trim() && !hasAttachments))
     throw new Error("Invalid message parameters");
 
-  const sanitizedText = sanitizeText(text, {
-    allowBasicHtml: false,
-    maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
-    stripNewlines: false,
-    normalizeSpaces: true,
-  });
-
-  if (sanitizedText.length === 0) throw new Error("Message cannot be empty");
+  const sanitizedText = text?.trim()
+    ? sanitizeText(text, {
+        allowBasicHtml: false,
+        maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+        stripNewlines: false,
+        normalizeSpaces: true,
+      })
+    : "";
 
   try {
     const messageData: Record<string, unknown> = {
@@ -607,6 +611,10 @@ export async function sendMessage(
 
     if (options.forwardedFrom) {
       messageData.forwardedFrom = options.forwardedFrom;
+    }
+
+    if (hasAttachments) {
+      messageData.attachments = options.attachments;
     }
 
     const messageRef = await addDoc(
@@ -645,10 +653,12 @@ export async function sendMessage(
       }
     }
 
+    const lastMessageText = formatLastMessageText(sanitizedText, options.attachments);
+
     await updateDoc(doc(db, "chats", chatId), {
       lastMessage: {
         id: messageId,
-        text: sanitizedText,
+        text: lastMessageText,
         senderId,
         createdAt: serverTimestamp(),
       },
@@ -1152,10 +1162,8 @@ export async function editMessage(
   messageId: string,
   text: string,
   userId: string,
+  attachments?: MessageAttachment[],
 ): Promise<void> {
-  if (!chatId || !messageId || !text?.trim() || !userId)
-    throw new Error("Invalid edit parameters");
-
   const sanitizedText = sanitizeText(text, {
     allowBasicHtml: false,
     maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
@@ -1163,7 +1171,9 @@ export async function editMessage(
     normalizeSpaces: true,
   });
 
-  if (sanitizedText.length === 0) throw new Error("Message cannot be empty");
+  const hasAttachments = attachments && attachments.length > 0;
+  if (!chatId || !messageId || !userId) throw new Error("Invalid edit parameters");
+  if (!sanitizedText && !hasAttachments) throw new Error("Message cannot be empty");
 
   try {
     const messageRef = doc(db, "chats", chatId, "messages", messageId);
@@ -1175,18 +1185,24 @@ export async function editMessage(
     if (messageData.senderId !== userId) throw new Error("Unauthorized");
     if (messageData.isDeleted) throw new Error("Cannot edit deleted message");
 
-    await updateDoc(messageRef, {
+    const updateData: Record<string, unknown> = {
       text: sanitizedText,
       isEdited: true,
       updatedAt: serverTimestamp(),
-    });
+    };
+    if (attachments !== undefined) {
+      updateData.attachments = attachments.length > 0 ? attachments : [];
+    }
+
+    await updateDoc(messageRef, updateData);
 
     const chatDoc = await getDoc(doc(db, "chats", chatId));
     if (chatDoc.exists()) {
       const chatData = chatDoc.data() as Chat;
       if (chatData.lastMessage?.senderId === userId) {
+        const lastText = formatLastMessageText(sanitizedText, attachments);
         await updateDoc(doc(db, "chats", chatId), {
-          "lastMessage.text": sanitizedText,
+          "lastMessage.text": lastText,
           updatedAt: serverTimestamp(),
         });
       }
@@ -1265,7 +1281,7 @@ export async function deleteMessageForAll(
 export async function sendMessagesBatch(
   chatId: string,
   senderId: string,
-  messages: { text: string; forwardedFrom?: string }[],
+  messages: { text: string; forwardedFrom?: string; attachments?: MessageAttachment[] }[],
 ): Promise<void> {
   if (!chatId || !senderId || !messages.length)
     throw new Error("Invalid parameters");
@@ -1284,7 +1300,8 @@ export async function sendMessagesBatch(
       normalizeSpaces: true,
     }),
     forwardedFrom: m.forwardedFrom,
-  })).filter((m) => m.text.length > 0);
+    attachments: m.attachments,
+  })).filter((m) => m.text.length > 0 || (m.attachments && m.attachments.length > 0));
 
   if (!sanitized.length) throw new Error("No valid messages to send");
 
@@ -1300,12 +1317,14 @@ export async function sendMessagesBatch(
         createdAt: serverTimestamp(),
       };
       if (m.forwardedFrom) data.forwardedFrom = m.forwardedFrom;
+      if (m.attachments?.length) data.attachments = m.attachments;
       return addDoc(collection(db, "chats", chatId, "messages"), data);
     }),
   );
 
   const lastRef = messageRefs[messageRefs.length - 1]!;
-  const lastText = sanitized[sanitized.length - 1]!.text;
+  const lastSanitized = sanitized[sanitized.length - 1]!;
+  const lastText = formatLastMessageText(lastSanitized.text, lastSanitized.attachments);
 
   await Promise.allSettled([
     updateDoc(doc(db, "chats", chatId), {
