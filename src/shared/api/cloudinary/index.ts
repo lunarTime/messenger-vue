@@ -66,6 +66,29 @@ export function validateFile(file: File): string | null {
   return null;
 }
 
+const UPLOAD_LIMIT = 10;
+const UPLOAD_WINDOW_MS = 60000;
+const uploadTimestamps: number[] = [];
+
+function checkUploadRateLimit(): void {
+  const now = Date.now();
+
+  while (
+    uploadTimestamps.length > 0 &&
+    now - uploadTimestamps[0]! > UPLOAD_WINDOW_MS
+  ) {
+    uploadTimestamps.shift();
+  }
+
+  if (uploadTimestamps.length >= UPLOAD_LIMIT) {
+    throw new Error(
+      "Слишком много загрузок. Подождите минуту и попробуйте снова.",
+    );
+  }
+
+  uploadTimestamps.push(now);
+}
+
 export function uploadFileToCloudinary(
   file: File,
   chatId: string,
@@ -77,6 +100,12 @@ export function uploadFileToCloudinary(
 
   if (!cloudName || !uploadPreset) {
     return Promise.reject(new Error("Cloudinary configuration is missing"));
+  }
+
+  try {
+    checkUploadRateLimit();
+  } catch (e) {
+    return Promise.reject(e);
   }
 
   const resourceType = getCloudinaryResourceType(file.type);
@@ -91,14 +120,28 @@ export function uploadFileToCloudinary(
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    let isSettled = false;
 
-    xhr.upload.addEventListener("progress", (event) => {
+    const cleanup = () => {
+      xhr.upload.removeEventListener("progress", onProgressHandler);
+      xhr.removeEventListener("load", onLoadHandler);
+      xhr.removeEventListener("error", onErrorHandler);
+      xhr.removeEventListener("abort", onAbortHandler);
+    };
+
+    const onProgressHandler = (event: ProgressEvent) => {
       if (event.lengthComputable) {
         onProgress?.(Math.round((event.loaded / event.total) * 100));
       }
-    });
+    };
 
-    xhr.addEventListener("load", () => {
+    const onLoadHandler = () => {
+      if (isSettled) return;
+
+      isSettled = true;
+
+      cleanup();
+
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
@@ -113,6 +156,7 @@ export function uploadFileToCloudinary(
             ...(data.height ? { height: data.height as number } : {}),
             ...(data.duration ? { duration: data.duration as number } : {}),
           };
+
           resolve(attachment);
         } catch {
           reject(new Error("Failed to parse Cloudinary response"));
@@ -120,17 +164,39 @@ export function uploadFileToCloudinary(
       } else {
         try {
           const errorData = JSON.parse(xhr.responseText);
+
           reject(new Error(errorData.error?.message ?? "Upload failed"));
         } catch {
           reject(new Error(`Upload failed with status ${xhr.status}`));
         }
       }
-    });
+    };
 
-    xhr.addEventListener("error", () =>
-      reject(new Error("Network error during upload")),
-    );
-    xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+    const onErrorHandler = () => {
+      if (isSettled) return;
+
+      isSettled = true;
+
+      cleanup();
+
+      reject(new Error("Network error during upload"));
+    };
+
+    const onAbortHandler = () => {
+      if (isSettled) return;
+
+      isSettled = true;
+
+      cleanup();
+
+      reject(new Error("Upload aborted"));
+    };
+
+    xhr.upload.addEventListener("progress", onProgressHandler);
+    xhr.addEventListener("load", onLoadHandler);
+    xhr.addEventListener("error", onErrorHandler);
+    xhr.addEventListener("abort", onAbortHandler);
+
     xhr.open(
       "POST",
       `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
