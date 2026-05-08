@@ -118,7 +118,7 @@ const gridClass = computed(() => {
         size="small"
         text
         rounded
-        class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-white! bg-black/40! hover:bg-black/60! pointer-events-auto"
+        class="absolute! top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-white! bg-black/40! hover:bg-black/60! pointer-events-auto"
         @click.stop="downloadFile(vid.url, vid.name)"
         v-tooltip.top="'Скачать'"
       />
@@ -130,27 +130,12 @@ const gridClass = computed(() => {
       class="flex items-center gap-2 px-3 py-2 rounded-xl max-w-xs"
       :class="isOutgoing ? 'bg-white/15' : 'bg-(--p-primary-color)/10'"
     >
-      <div
-        class="shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
-        :class="isOutgoing ? 'bg-white/20' : 'bg-(--p-primary-color)/20'"
-      >
-        <i class="pi pi-volume-up text-sm" />
-      </div>
       <div class="flex-1 min-w-0">
-        <audio :src="aud.url" controls class="w-full h-8" preload="none" />
-        <div class="text-xs opacity-60 truncate mt-0.5">
+        <div class="text-xs opacity-60 md:max-w-80 max-w-50 truncate mb-1">
           {{ aud.name }}
         </div>
+        <audio :src="aud.url" controls class="w-full h-8" preload="none" />
       </div>
-      <Button
-        icon="pi pi-download"
-        size="small"
-        text
-        rounded
-        class="shrink-0"
-        @click="downloadFile(aud.url, aud.name)"
-        v-tooltip.top="'Скачать'"
-      />
     </div>
 
     <div
@@ -165,7 +150,7 @@ const gridClass = computed(() => {
       >
         <i :class="[getFileIcon(file), 'text-base']" />
       </div>
-      <div class="flex-1 min-w-0 truncate w-0">
+      <div class="flex-1 min-w-20 truncate w-0">
         <div class="flex-1 min-w-0 text-sm font-medium truncate">
           {{ file.name }}
         </div>
