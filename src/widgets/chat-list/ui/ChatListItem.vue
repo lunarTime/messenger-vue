@@ -164,13 +164,23 @@ watch(
       props.otherUserId,
       isLastOutgoing.value,
     ] as const,
-  ([chatId, lastMessageId, otherUserId, outgoing]) => {
+  ([chatId, lastMessageId, otherUserId, outgoing], old) => {
+    const sameMessage =
+      old &&
+      old[0] === chatId &&
+      old[1] === lastMessageId &&
+      old[2] === otherUserId &&
+      old[3] === outgoing;
+
+    if (sameMessage) return;
+
     unsubscribeLastStatus?.();
     unsubscribeLastStatus = null;
-    lastMessageStatus.value = null;
 
-    if (!outgoing) return;
-    if (!chatId || !lastMessageId || !otherUserId) return;
+    if (!outgoing || !chatId || !lastMessageId || !otherUserId) {
+      lastMessageStatus.value = null;
+      return;
+    }
 
     unsubscribeLastStatus = subscribeToMessageDeliveryStatus(
       lastMessageId,
