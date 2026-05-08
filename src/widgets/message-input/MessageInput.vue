@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { ref, nextTick, defineAsyncComponent, watch } from "vue";
+import { ref, nextTick, defineAsyncComponent, watch, computed } from "vue";
 import { onClickOutside } from "@vueuse/core";
 import { useMessageInput } from "@/features/send-message/model/useMessageInput";
 import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
 import { useTheme } from "@/shared/composables/useTheme";
 import { useIsMobile } from "@/shared/composables/useIsMobile";
 import { useMessageCompose } from "@/shared/composables/useMessageCompose";
+import { formatFileSize } from "@/shared/lib/image/formatFileSize";
+import { MAX_FILES_PER_MESSAGE } from "@/shared/api/cloudinary";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
 import Message from "primevue/message";
+import ProgressBar from "primevue/progressbar";
 import "vue3-emoji-picker/css";
 
 const EmojiPicker = defineAsyncComponent(() => import("vue3-emoji-picker"));
@@ -21,12 +24,13 @@ const {
   showCharacterCount,
   isNearLimit,
   isAtLimit,
+  canSend,
   sendMessage,
   handleKeyDown,
   maxLength,
+  fileUpload,
 } = useMessageInput();
 const { isMobile } = useIsMobile();
-
 const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
 const { isDark } = useTheme();
 const messageCompose = useMessageCompose();
@@ -36,6 +40,9 @@ const isEmojiOpen = ref(false);
 const pickerRef = ref<HTMLElement | null>(null);
 const pickerKey = ref(0);
 const savedCursorPos = ref<number | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const isDragging = ref(false);
+const dragCounter = ref(0);
 
 type Emoji = { i: string };
 
@@ -86,10 +93,136 @@ onClickOutside(pickerRef, () => {
 watch(isDark, () => {
   if (isEmojiOpen.value) pickerKey.value++;
 });
+
+function openFilePicker() {
+  fileInputRef.value?.click();
+}
+
+function onFileInputChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+
+  if (!input.files) return;
+
+  const files = Array.from(input.files);
+  const errors = fileUpload.addFiles(files);
+
+  if (errors.length) {
+    fileErrors.value = errors;
+
+    setTimeout(() => {
+      fileErrors.value = [];
+    }, 4000);
+  }
+
+  input.value = "";
+}
+
+const fileErrors = ref<string[]>([]);
+
+function onDragEnter(event: DragEvent) {
+  event.preventDefault();
+
+  dragCounter.value++;
+  isDragging.value = true;
+}
+
+function onDragLeave(event: DragEvent) {
+  event.preventDefault();
+
+  dragCounter.value--;
+
+  if (dragCounter.value <= 0) {
+    dragCounter.value = 0;
+    isDragging.value = false;
+  }
+}
+
+function onDragOver(event: DragEvent) {
+  event.preventDefault();
+}
+
+function onDrop(event: DragEvent) {
+  event.preventDefault();
+
+  isDragging.value = false;
+  dragCounter.value = 0;
+
+  const files = Array.from(event.dataTransfer?.files ?? []);
+
+  if (!files.length) return;
+
+  const errors = fileUpload.addFiles(files);
+
+  if (errors.length) {
+    fileErrors.value = errors;
+
+    setTimeout(() => {
+      fileErrors.value = [];
+    }, 4000);
+  }
+}
+
+function getFileIcon(mimeType: string): string {
+  if (mimeType.startsWith("image/")) return "pi-image";
+  if (mimeType.startsWith("video/")) return "pi-video";
+  if (mimeType.startsWith("audio/")) return "pi-volume-up";
+
+  return "pi-file";
+}
+
+const canAddMore = computed(
+  () => fileUpload.pendingFiles.value.length < MAX_FILES_PER_MESSAGE,
+);
 </script>
 
 <template>
-  <div class="sticky bottom-0 z-10">
+  <div
+    class="sticky bottom-0 z-10 transition-all duration-200"
+    @dragenter="onDragEnter"
+    @dragleave="onDragLeave"
+    @dragover="onDragOver"
+    @drop="onDrop"
+  >
+    <Transition
+      enter-active-class="transition-all duration-150 ease-out"
+      enter-from-class="opacity-0 scale-98"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition-all duration-100 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="isDragging"
+        class="absolute inset-0 z-20 rounded-2xl border-2 border-dashed border-(--p-primary-color) bg-(--p-primary-color)/10 backdrop-blur-sm flex flex-col items-center justify-center gap-2 pointer-events-none"
+      >
+        <i class="pi pi-cloud-upload text-3xl text-(--p-primary-color)" />
+        <span class="text-sm font-medium text-(--p-primary-color)">
+          Перетащите файлы сюда (до {{ MAX_FILES_PER_MESSAGE }} файлов)
+        </span>
+      </div>
+    </Transition>
+
+    <Transition
+      enter-active-class="transition-all duration-200 ease-out"
+      enter-from-class="opacity-0 -translate-y-2"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition-all duration-150 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 -translate-y-2"
+    >
+      <div v-if="fileErrors.length" class="mb-2 flex flex-col gap-1">
+        <Message
+          v-for="(err, i) in fileErrors"
+          :key="i"
+          :closable="false"
+          severity="warn"
+          class="py-1!"
+        >
+          {{ err }}
+        </Message>
+      </div>
+    </Transition>
+
     <Transition
       enter-active-class="transition-all duration-200 ease-out"
       enter-from-class="opacity-0 -translate-y-2"
@@ -140,6 +273,140 @@ watch(isDark, () => {
       </div>
     </Transition>
 
+    <Transition
+      enter-active-class="transition-all duration-200 ease-out"
+      enter-from-class="opacity-0 -translate-y-2"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition-all duration-150 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 -translate-y-2"
+    >
+      <div
+        v-if="fileUpload.pendingFiles.value.length"
+        class="mb-2 p-2 rounded-xl bg-(--p-primary-color)/20 flex overflow-x-auto items-center gap-2"
+      >
+        <div
+          v-for="pf in fileUpload.pendingFiles.value"
+          :key="pf.id"
+          class="relative flex flex-col items-center gap-1 group"
+        >
+          <div
+            v-if="pf.previewUrl"
+            class="w-22! h-26! rounded-lg overflow-hidden relative group/img"
+          >
+            <img
+              :src="pf.previewUrl"
+              class="w-full h-full object-cover"
+              alt="Превью файла"
+            />
+            <div
+              v-if="pf.status === 'uploading'"
+              class="absolute inset-0 bg-black/50 flex items-end"
+            >
+              <ProgressBar
+                :value="pf.progress"
+                class="w-full! h-1! rounded-none!"
+                :show-value="false"
+              />
+            </div>
+            <div
+              v-if="pf.status === 'done'"
+              class="absolute top-1 left-1 w-4 h-4 rounded-full bg-green-500 flex items-center justify-center"
+            >
+              <i class="pi pi-check text-white text-[8px]" />
+            </div>
+            <div
+              v-if="pf.status === 'error'"
+              class="absolute inset-0 bg-red-500/30 flex items-center justify-center cursor-pointer"
+              @click="fileUpload.retryFile(pf.id)"
+              title="Нажмите для повтора"
+            >
+              <i class="pi pi-refresh text-white text-sm" />
+            </div>
+            <Button
+              v-if="pf.status !== 'uploading'"
+              icon="pi pi-times"
+              rounded
+              text
+              size="small"
+              severity="danger"
+              class="absolute! top-0 right-0 scale-80 opacity-0 group-hover/img:opacity-100 transition-opacity"
+              @click.stop="fileUpload.removeFile(pf.id)"
+              aria-label="Удалить файл"
+            />
+          </div>
+
+          <div
+            v-else
+            class="flex h-26! w-22! rounded-lg flex-col items-center justify-center gap-1 relative"
+          >
+            <i
+              :class="[
+                'pi',
+                getFileIcon(pf.file.type),
+                'text-xl text-surface-500',
+              ]"
+            />
+            <div class="flex justify-between self-start text-xs">
+              <span class="line-clamp-2 text-center">
+                {{ pf.file.name }}
+              </span>
+            </div>
+
+            <div
+              v-if="pf.status === 'uploading'"
+              class="absolute inset-0 bg-black/30 flex items-end rounded-lg overflow-hidden"
+            >
+              <ProgressBar
+                :value="pf.progress"
+                class="w-full! h-1! rounded-none!"
+                :show-value="false"
+              />
+            </div>
+            <div
+              v-if="pf.status === 'done'"
+              class="absolute top-1 left-1 w-4 h-4 rounded-full bg-green-500 flex items-center justify-center"
+            >
+              <i class="pi pi-check text-white text-sm" />
+            </div>
+            <div
+              v-if="pf.status === 'error'"
+              class="absolute inset-0 rounded-lg bg-red-500/30 flex items-center justify-center cursor-pointer"
+              @click="fileUpload.retryFile(pf.id)"
+              title="Нажмите для повтора"
+            >
+              <i class="pi pi-refresh text-white text-sm" />
+            </div>
+            <span class="text-xs max-w-16 truncate">
+              {{ formatFileSize(pf.file.size) }}
+            </span>
+
+            <Button
+              v-if="pf.status !== 'uploading'"
+              icon="pi pi-times"
+              rounded
+              text
+              size="small"
+              severity="danger"
+              class="absolute! top-0 right-0 scale-80 opacity-100 group-hover:opacity-100 transition-opacity"
+              @click="fileUpload.removeFile(pf.id)"
+              aria-label="Удалить файл"
+            />
+          </div>
+        </div>
+
+        <button
+          v-if="canAddMore"
+          type="button"
+          class="flex-none w-22 h-22 rounded-lg border-2 border-dashed border-surface-300 dark:border-surface-600 flex flex-col items-center justify-center gap-1 text-surface-400 hover:border-(--p-primary-color) hover:text-(--p-primary-color) transition-colors cursor-pointer"
+          @click="openFilePicker"
+        >
+          <i class="pi pi-plus text-lg" />
+          <span class="text-[10px]">Ещё</span>
+        </button>
+      </div>
+    </Transition>
+
     <div class="flex gap-2">
       <div class="flex-1 relative">
         <Textarea
@@ -152,10 +419,25 @@ watch(isDark, () => {
           @keyup="saveCursorPos"
           @click="saveCursorPos"
           @blur="saveCursorPos"
-          class="block w-full md:text-sm! text-xs! md:max-h-80 max-h-30 pr-15!"
+          class="block w-full md:text-sm! text-xs! md:max-h-80 max-h-30 pl-8! pr-16!"
           placeholder="Напишите сообщение..."
           :rows="isMobile ? '3' : '4'"
           fluid
+        />
+
+        <Button
+          type="button"
+          icon="pi pi-paperclip"
+          class="absolute! top-0 left-0 w-8! h-8!"
+          rounded
+          text
+          :disabled="!canAddMore || isSending"
+          @click="openFilePicker"
+          v-tooltip.top="
+            canAddMore
+              ? 'Прикрепить файл'
+              : `Максимум ${MAX_FILES_PER_MESSAGE} файлов`
+          "
         />
 
         <Transition
@@ -255,7 +537,7 @@ watch(isDark, () => {
 
       <Button
         type="button"
-        :disabled="!message.trim() || isSending"
+        :disabled="!canSend"
         :loading="isSending"
         @click="sendMessage"
         icon="pi pi-send"
@@ -263,5 +545,14 @@ watch(isDark, () => {
         :aria-label="isSending ? 'Отправка...' : 'Отправить сообщение'"
       />
     </div>
+
+    <input
+      ref="fileInputRef"
+      type="file"
+      multiple
+      class="hidden"
+      accept="*/*"
+      @change="onFileInputChange"
+    />
   </div>
 </template>
