@@ -11,8 +11,9 @@ import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { rateLimiter } from "@/shared/lib/security/rateLimiter";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
 import { useFileUpload } from "@/features/send-message/model/useFileUpload";
+import { useMessageQueue } from "@/features/send-message/model/useMessageQueue";
 
-export function useMessageInput() {
+export function useMessageInput(focusFn?: () => void) {
   const messageStore = useMessageStore();
   const chatStore = useChatStore();
   const userStore = useUserStore();
@@ -20,11 +21,14 @@ export function useMessageInput() {
   const messageCompose = useMessageCompose();
 
   const message = ref("");
-  const isSending = ref(false);
   const isTyping = ref(false);
   const error = ref<string | null>(null);
 
   const fileUpload = useFileUpload(() => chatStore.activeChatId);
+
+  const messageQueue = useMessageQueue();
+
+  messageQueue.init((text, options) => messageStore.sendMessage(text, options));
 
   const canSendTypingStatus = computed(() =>
     Boolean(chatStore.activeChatId && userStore.userId),
@@ -40,16 +44,15 @@ export function useMessageInput() {
 
   const canSend = computed(
     () =>
-      (message.value.trim().length > 0 || fileUpload.pendingFiles.value.length > 0) &&
-      !isSending.value,
+      (message.value.trim().length > 0 ||
+        fileUpload.pendingFiles.value.length > 0) &&
+      !messageQueue.isFull(),
   );
 
   const updateTypingStatus = async (status: boolean): Promise<void> => {
     if (!canSendTypingStatus.value) return;
-
     try {
       await setTypingStatus(chatStore.activeChatId!, userStore.userId!, status);
-
       isTyping.value = status;
     } catch {}
   };
@@ -60,7 +63,6 @@ export function useMessageInput() {
     if (newValue.length > VALIDATION_CONFIG.MESSAGE.MAX_LENGTH) {
       message.value = newValue.slice(0, VALIDATION_CONFIG.MESSAGE.MAX_LENGTH);
       error.value = "Достигнут максимальный размер сообщения";
-
       return;
     }
 
@@ -97,39 +99,33 @@ export function useMessageInput() {
       messageCompose.clearReply();
       messageCompose.clearForward();
       fileUpload.clearAll();
+      messageQueue.clear();
 
-      if (newChatId) {
-        message.value = draftStore.getDraft(newChatId);
-      } else {
-        message.value = "";
-      }
+      message.value = newChatId ? draftStore.getDraft(newChatId) : "";
+
+      if (newChatId) focusFn?.();
     },
     { immediate: true },
   );
 
   watch(message, (val) => {
     const id = chatStore.activeChatId;
-
     if (!id) return;
-
     draftStore.setDraft(id, val);
   });
-
-  watch(
-    () => chatStore.activeChatId,
-    (id) => {
-      if (!id) return;
-
-      message.value = draftStore.getDraft(id);
-    },
-    { immediate: true },
-  );
 
   const sendMessage = async (): Promise<void> => {
     const trimmedMessage = message.value.trim();
     const hasPendingFiles = fileUpload.pendingFiles.value.length > 0;
 
-    if ((!trimmedMessage && !hasPendingFiles) || isSending.value || !chatStore.activeChat) return;
+    if (!trimmedMessage && !hasPendingFiles) return;
+    if (!chatStore.activeChat) return;
+
+    if (messageQueue.isFull()) {
+      error.value = "Очередь сообщений заполнена. Подождите.";
+
+      return;
+    }
 
     if (trimmedMessage) {
       const rateLimitKey = `send-message:${userStore.userId}`;
@@ -161,47 +157,41 @@ export function useMessageInput() {
       });
     }
 
-    isSending.value = true;
     error.value = null;
 
-    try {
-      if (isTyping.value) {
-        await updateTypingStatus(false);
-      }
-
-      let attachments: import("@/shared/types/message").MessageAttachment[] | undefined;
-
-      if (hasPendingFiles) {
-        attachments = await fileUpload.waitForUploads();
-
-        if (attachments.length === 0 && !sanitized) {
-          error.value = "Не удалось загрузить ни один файл";
-          return;
-        }
-      }
-
-      const replyToMessageId = messageCompose.replyContext?.messageId;
-
-      await messageStore.sendMessage(sanitized, {
-        ...(replyToMessageId ? { replyToMessageId } : {}),
-        ...(attachments && attachments.length > 0 ? { attachments } : {}),
-      });
-
-      messageCompose.clearReply();
-      fileUpload.clearAll();
-
-      const id = chatStore.activeChatId;
-
-      message.value = "";
-
-      if (id) {
-        draftStore.clearDraft(id);
-      }
-    } catch {
-      error.value = "Не удалось отправить сообщение. Попробуйте ещё раз.";
-    } finally {
-      isSending.value = false;
+    if (isTyping.value) {
+      updateTypingStatus(false).catch(() => {});
     }
+
+    let attachments:
+      | import("@/shared/types/message").MessageAttachment[]
+      | undefined;
+
+    if (hasPendingFiles) {
+      attachments = await fileUpload.waitForUploads();
+
+      if (attachments.length === 0 && !sanitized) {
+        error.value = "Не удалось загрузить ни один файл";
+        return;
+      }
+    }
+
+    const replyToMessageId = messageCompose.replyContext?.messageId;
+
+    messageQueue.enqueue(sanitized, {
+      ...(replyToMessageId ? { replyToMessageId } : {}),
+      ...(attachments?.length ? { attachments } : {}),
+    });
+
+    messageCompose.clearReply();
+    fileUpload.clearAll();
+
+    const id = chatStore.activeChatId;
+    message.value = "";
+
+    if (id) draftStore.clearDraft(id);
+
+    focusFn?.();
   };
 
   const handleKeyDown = (event: KeyboardEvent): void => {
@@ -222,7 +212,7 @@ export function useMessageInput() {
 
   return {
     message,
-    isSending,
+    isSending: messageQueue.isProcessing,
     error,
     charactersRemaining,
     showCharacterCount,
@@ -233,5 +223,6 @@ export function useMessageInput() {
     handleKeyDown,
     maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
     fileUpload,
+    messageQueue,
   };
 }
