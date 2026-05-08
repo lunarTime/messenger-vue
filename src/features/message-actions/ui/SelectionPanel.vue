@@ -140,18 +140,18 @@ const confirmDeleteForAll = async () => {
   >
     <div
       v-if="selection.isActive"
-      class="absolute top-full right-6 w-fit flex items-center justify-between gap-2 px-2 py-1 md:mt-5 mt-12 dark:bg-black/70 bg-(--p-primary-color)/20 rounded-2xl"
+      class="absolute top-full sm:right-6 right-4 w-fit flex items-center justify-between sm:gap-2 gap-0 sm:px-2 px-0 py-1 mt-14 dark:bg-black/70 bg-white/90 rounded-2xl shadow-xl"
     >
-      <div class="flex items-center gap-2">
+      <div class="flex items-center sm:gap-2 gap-0">
         <Button
           icon="pi pi-times"
           text
           rounded
-          :size="iconSize"
+          size="small"
           aria-label="Отменить выделение"
           @click="selection.exit()"
         />
-        <span class="md:text-sm text-base font-medium leading-none">
+        <span class="md:text-sm text-base font-medium min-w-max leading-none">
           {{ selection.count }}
           {{
             selection.count === 1
@@ -170,6 +170,7 @@ const confirmDeleteForAll = async () => {
           rounded
           :size="iconSize"
           :disabled="!canReply"
+          class="disabled:opacity-25!"
           aria-label="Ответить"
           v-tooltip.bottom="'Ответить'"
           @click="handleReply"
@@ -220,18 +221,27 @@ const confirmDeleteForAll = async () => {
       <Button
         label="Отмена"
         severity="secondary"
+        :pt="{
+          label: { class: 'md:text-sm! text-xs!' },
+        }"
         @click="deleteDialogVisible = false"
       />
       <Button
         label="У меня"
         severity="secondary"
         icon="pi pi-trash"
+        :pt="{
+          label: { class: 'md:text-sm! text-xs!' },
+        }"
         @click="confirmDeleteForMe"
       />
       <Button
         label="У всех"
         severity="danger"
         icon="pi pi-trash"
+        :pt="{
+          label: { class: 'md:text-sm! text-xs!' },
+        }"
         @click="confirmDeleteForAll"
       />
     </template>
