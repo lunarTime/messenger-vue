@@ -29,7 +29,7 @@ const getOtherUserId = (chat: Chat): string => {
 };
 
 const normalizeLastMessage = (message?: Chat["lastMessage"]) => {
-  if (!message?.text) return undefined;
+  if (!message) return undefined;
 
   return {
     ...message,
@@ -113,8 +113,11 @@ const onPinnedDragOver = (chatId: string) => {
         <p class="text-sm mt-2">Используйте поиск выше, чтобы начать общение</p>
       </div>
 
-      <div v-else class="w-full min-w-0 overflow-hidden flex flex-col gap-2">
-        <div v-if="pinnedChats.length" class="flex flex-col gap-2">
+      <div
+        v-else
+        class="w-full min-w-0 overflow-hidden flex flex-col md:gap-2 gap-0"
+      >
+        <div v-if="pinnedChats.length" class="flex flex-col md:gap-2 gap-0">
           <ChatListItem
             v-for="chat in pinnedChats"
             :key="chat.id"
@@ -148,7 +151,7 @@ const onPinnedDragOver = (chatId: string) => {
 
         <Divider
           v-if="pinnedChats.length && unpinnedChats.length"
-          class="my-0!"
+          class="md:my-0! my-2!"
         >
         </Divider>
 

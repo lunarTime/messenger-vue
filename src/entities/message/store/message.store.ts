@@ -15,7 +15,7 @@ import {
   subscribeToChatMemberMeta,
   subscribeToChatMeta,
 } from "@/shared/api/firebase/firestore";
-import type { Message, MessageStatus, SendMessageOptions } from "@/shared/types/message";
+import type { Message, MessageAttachment, MessageStatus, SendMessageOptions } from "@/shared/types/message";
 import type { Unsubscribe } from "firebase/firestore";
 
 export const useMessageStore = defineStore("messages", () => {
@@ -197,7 +197,9 @@ export const useMessageStore = defineStore("messages", () => {
       );
     }
 
-    if (!text?.trim()) {
+    const hasAttachments = options.attachments && options.attachments.length > 0;
+
+    if (!text?.trim() && !hasAttachments) {
       return;
     }
 
@@ -226,6 +228,7 @@ export const useMessageStore = defineStore("messages", () => {
   const editMessage = async (
     messageId: string,
     newText: string,
+    attachments?: MessageAttachment[],
   ): Promise<void> => {
     const chatId = chatStore.activeChatId;
     const myId = userStore.userId;
@@ -236,12 +239,8 @@ export const useMessageStore = defineStore("messages", () => {
       );
     }
 
-    if (!newText?.trim()) {
-      throw new Error("Текст сообщения не может быть пустым");
-    }
-
     try {
-      await editFirebaseMessage(chatId, messageId, newText, myId);
+      await editFirebaseMessage(chatId, messageId, newText, myId, attachments);
     } catch (error) {
       throw error;
     }

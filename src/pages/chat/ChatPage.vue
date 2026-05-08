@@ -35,10 +35,10 @@ onUnmounted(() => {
   <div class="flex h-full overflow-hidden">
     <template v-if="!isMobile">
       <Splitter class="w-full">
-        <SplitterPanel class="max-w-3xl min-w-100 h-full p-4 pr-0">
+        <SplitterPanel class="max-w-130 min-w-90 w-1/2! h-full p-4 pr-0">
           <ChatList />
         </SplitterPanel>
-        <SplitterPanel class="flex min-w-80">
+        <SplitterPanel class="flex md:min-w-100 min-w-80">
           <div class="flex flex-col flex-1 min-w-0">
             <div
               v-if="!chatStore.activeChat"

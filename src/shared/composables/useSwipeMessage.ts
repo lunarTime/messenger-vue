@@ -1,13 +1,23 @@
 import { ref } from "vue";
 
+export const isSwipingMessage = ref(false);
+
 interface SwipeMessageOptions {
-  onSwipeLeft: () => void;
+  onSwipe: () => void;
+  direction?: "left" | "right";
   threshold?: number;
+  maxOffset?: number;
   maxVertical?: number;
 }
 
 export function useSwipeMessage(options: SwipeMessageOptions) {
-  const { onSwipeLeft, threshold = 50, maxVertical = 40 } = options;
+  const {
+    onSwipe,
+    direction = "left",
+    threshold = 20,
+    maxOffset = 20,
+    maxVertical = 20,
+  } = options;
 
   const swipeOffset = ref(0);
   const isSwiping = ref(false);
@@ -36,14 +46,19 @@ export function useSwipeMessage(options: SwipeMessageOptions) {
       isTracking = false;
       swipeOffset.value = 0;
       isSwiping.value = false;
-
       return;
     }
 
-    if (dx < 0) {
-      isSwiping.value = true;
-      swipeOffset.value = Math.max(dx, -threshold * 1.5);
+    const isCorrectDirection = direction === "left" ? dx < 0 : dx > 0;
 
+    if (isCorrectDirection) {
+      isSwiping.value = true;
+      isSwipingMessage.value = true;
+      const clamped =
+        direction === "left"
+          ? Math.max(dx, -maxOffset)
+          : Math.min(dx, maxOffset);
+      swipeOffset.value = clamped;
       e.stopPropagation();
     }
   };
@@ -54,15 +69,19 @@ export function useSwipeMessage(options: SwipeMessageOptions) {
     const dx = e.changedTouches[0]!.clientX - startX;
     const dy = Math.abs(e.changedTouches[0]!.clientY - startY);
 
-    if (dx < -threshold && dy < maxVertical && !triggered) {
-      triggered = true;
+    const passed = direction === "left" ? dx < -threshold : dx > threshold;
 
-      onSwipeLeft();
+    if (passed && dy < maxVertical && !triggered) {
+      triggered = true;
+      onSwipe();
     }
 
     isTracking = false;
     isSwiping.value = false;
     swipeOffset.value = 0;
+    requestAnimationFrame(() => {
+      isSwipingMessage.value = false;
+    });
   };
 
   return {

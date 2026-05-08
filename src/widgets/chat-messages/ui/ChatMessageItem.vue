@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, ref, inject, type Ref } from "vue";
 import type { Message } from "@/shared/types/message";
 import ChatBubble from "@/shared/ui/ChatBubble.vue";
@@ -79,7 +79,8 @@ const {
   onTouchMove: swipeTouchMove,
   onTouchEnd: swipeTouchEnd,
 } = useSwipeMessage({
-  onSwipeLeft: () => {
+  direction: isOutgoing.value ? "left" : "right",
+  onSwipe: () => {
     if (!props.message.isDeleted && !selection.isActive) {
       emit("reply", props.message.id);
     }
@@ -123,6 +124,16 @@ const handleClick = () => {
   }
 };
 
+const handleDblClick = () => {
+  if (!props.message.isDeleted) {
+    if (selection.isActive) {
+      selection.toggle(props.message.id);
+    } else {
+      selection.enter(props.message.id);
+    }
+  }
+};
+
 useIntersectionObserver(
   messageRef,
   () => {
@@ -139,7 +150,7 @@ useIntersectionObserver(
   <div
     ref="messageRef"
     :data-message-id="message.id"
-    class="flex gap-2 group relative w-full overflow-hidden rounded-lg transition-colors duration-150"
+    class="flex gap-2 group relative w-full rounded-md overflow-hidden transition-colors duration-150"
     :class="[
       isOutgoing ? 'self-end flex-row-reverse' : 'self-start flex-row',
       isSelected ? 'bg-(--p-primary-color)/20' : '',
@@ -150,9 +161,10 @@ useIntersectionObserver(
     @touchend="onTouchEnd"
     @touchcancel="lpTouchEnd"
     @click="handleClick"
+    @dblclick="handleDblClick"
   >
     <div
-      class="flex gap-2 items-start lg:max-w-[80%] max-w-[90%] min-w-0 transition-transform"
+      class="flex gap-2 items-start w-full min-w-0 transition-transform"
       :class="[
         isOutgoing ? 'flex-row-reverse' : 'flex-row',
         isSwiping ? 'duration-0' : 'duration-200 ease-out',
@@ -194,6 +206,7 @@ useIntersectionObserver(
         "
         :reply-to-sender-name="replyToSenderName ?? undefined"
         :forwarded-from="message.forwardedFrom"
+        :attachments="message.attachments"
       />
 
       <MessageActionsMenu

@@ -1,9 +1,10 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed } from "vue";
 import { formatTime } from "@/shared/utils/formatTime";
 import { PencilIcon, XCircleIcon } from "@heroicons/vue/24/solid";
-import type { MessageStatus } from "@/shared/types/message";
+import type { MessageStatus, MessageAttachment } from "@/shared/types/message";
 import type { Timestamp } from "firebase/firestore";
+import MessageAttachments from "@/shared/ui/MessageAttachments.vue";
 
 const props = defineProps<{
   text: string;
@@ -16,12 +17,13 @@ const props = defineProps<{
   replyToText?: string;
   replyToSenderName?: string;
   forwardedFrom?: string;
+  attachments?: MessageAttachment[];
 }>();
 
 const isOutgoing = computed(() => props.variant === "outgoing");
 
 const bubbleClasses = computed(() => [
-  "max-w-full md:px-3 px-2 py-1 rounded-2xl shadow-sm",
+  "md:px-3 px-2 pb-1 pt-3 md:max-w-140 max-w-120 rounded-2xl shadow-sm break-all",
   isOutgoing.value
     ? "bg-(--p-primary-color)/70 rounded-br-sm"
     : "bg-(--p-primary-color)/20 rounded-bl-sm",
@@ -88,7 +90,14 @@ const deliveryIcon = computed(() => {
           </div>
         </div>
 
-        <div class="md:text-base text-sm w-full">
+        <MessageAttachments
+          v-if="attachments && attachments.length"
+          :attachments="attachments"
+          :is-outgoing="isOutgoing"
+          class="mb-1"
+        />
+
+        <div v-if="text" class="md:text-base text-sm w-full">
           {{ text }}
         </div>
 

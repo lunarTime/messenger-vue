@@ -1,0 +1,15 @@
+export async function downloadFile(url: string, name: string) {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+
+  a.href = blobUrl;
+  a.download = name;
+
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  URL.revokeObjectURL(blobUrl);
+}

@@ -10,6 +10,7 @@ import { validateMessage } from "@/shared/lib/validation";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { rateLimiter } from "@/shared/lib/security/rateLimiter";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
+import { useFileUpload } from "@/features/send-message/model/useFileUpload";
 
 export function useMessageInput() {
   const messageStore = useMessageStore();
@@ -23,6 +24,8 @@ export function useMessageInput() {
   const isTyping = ref(false);
   const error = ref<string | null>(null);
 
+  const fileUpload = useFileUpload(() => chatStore.activeChatId);
+
   const canSendTypingStatus = computed(() =>
     Boolean(chatStore.activeChatId && userStore.userId),
   );
@@ -34,6 +37,12 @@ export function useMessageInput() {
   const showCharacterCount = computed(() => message.value.length > 0);
   const isNearLimit = computed(() => charactersRemaining.value < 100);
   const isAtLimit = computed(() => charactersRemaining.value <= 0);
+
+  const canSend = computed(
+    () =>
+      (message.value.trim().length > 0 || fileUpload.pendingFiles.value.length > 0) &&
+      !isSending.value,
+  );
 
   const updateTypingStatus = async (status: boolean): Promise<void> => {
     if (!canSendTypingStatus.value) return;
@@ -87,6 +96,7 @@ export function useMessageInput() {
       error.value = null;
       messageCompose.clearReply();
       messageCompose.clearForward();
+      fileUpload.clearAll();
 
       if (newChatId) {
         message.value = draftStore.getDraft(newChatId);
@@ -117,36 +127,38 @@ export function useMessageInput() {
 
   const sendMessage = async (): Promise<void> => {
     const trimmedMessage = message.value.trim();
+    const hasPendingFiles = fileUpload.pendingFiles.value.length > 0;
 
-    if (!trimmedMessage || isSending.value || !chatStore.activeChat) return;
+    if ((!trimmedMessage && !hasPendingFiles) || isSending.value || !chatStore.activeChat) return;
 
-    const rateLimitKey = `send-message:${userStore.userId}`;
-    const { MAX_REQUESTS, WINDOW_MS } = VALIDATION_CONFIG.MESSAGE.RATE_LIMIT;
+    if (trimmedMessage) {
+      const rateLimitKey = `send-message:${userStore.userId}`;
+      const { MAX_REQUESTS, WINDOW_MS } = VALIDATION_CONFIG.MESSAGE.RATE_LIMIT;
 
-    if (
-      !rateLimiter.check(rateLimitKey, {
-        maxRequests: MAX_REQUESTS,
-        windowMs: WINDOW_MS,
-      })
-    ) {
-      error.value = "Слишком много сообщений. Подождите немного.";
-      return;
+      if (
+        !rateLimiter.check(rateLimitKey, {
+          maxRequests: MAX_REQUESTS,
+          windowMs: WINDOW_MS,
+        })
+      ) {
+        error.value = "Слишком много сообщений. Подождите немного.";
+        return;
+      }
     }
 
-    const validation = validateMessage(trimmedMessage);
+    let sanitized = "";
 
-    if (!validation.success) {
-      error.value = validation.error;
-      return;
-    }
+    if (trimmedMessage) {
+      const validation = validateMessage(trimmedMessage);
 
-    const sanitized = sanitizeText(validation.data, {
-      maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
-    });
+      if (!validation.success) {
+        error.value = validation.error;
+        return;
+      }
 
-    if (!sanitized) {
-      error.value = "Сообщение пустое после обработки";
-      return;
+      sanitized = sanitizeText(validation.data, {
+        maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+      });
     }
 
     isSending.value = true;
@@ -157,14 +169,26 @@ export function useMessageInput() {
         await updateTypingStatus(false);
       }
 
+      let attachments: import("@/shared/types/message").MessageAttachment[] | undefined;
+
+      if (hasPendingFiles) {
+        attachments = await fileUpload.waitForUploads();
+
+        if (attachments.length === 0 && !sanitized) {
+          error.value = "Не удалось загрузить ни один файл";
+          return;
+        }
+      }
+
       const replyToMessageId = messageCompose.replyContext?.messageId;
 
-      await messageStore.sendMessage(
-        sanitized,
-        replyToMessageId ? { replyToMessageId } : {},
-      );
+      await messageStore.sendMessage(sanitized, {
+        ...(replyToMessageId ? { replyToMessageId } : {}),
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      });
 
       messageCompose.clearReply();
+      fileUpload.clearAll();
 
       const id = chatStore.activeChatId;
 
@@ -193,6 +217,7 @@ export function useMessageInput() {
         () => {},
       );
     }
+    fileUpload.clearAll();
   });
 
   return {
@@ -203,8 +228,10 @@ export function useMessageInput() {
     showCharacterCount,
     isNearLimit,
     isAtLimit,
+    canSend,
     sendMessage,
     handleKeyDown,
     maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+    fileUpload,
   };
 }
