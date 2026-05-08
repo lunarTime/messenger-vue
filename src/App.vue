@@ -1,38 +1,38 @@
 <script setup lang="ts">
-    import { RouterView } from 'vue-router'
-    import { useTheme } from '@/shared/composables/useTheme'
-    import { useUserPresence } from '@/entities/user/model/useUserPresence'
-    import AnimateBG from '@/shared/ui/AnimateBG.vue'
-    import ConfirmPopup from 'primevue/confirmpopup'
-    import Toast from 'primevue/toast'
+import { RouterView } from "vue-router";
+import { useTheme } from "@/shared/composables/useTheme";
+import { useUserPresence } from "@/entities/user/model/useUserPresence";
+import AnimateBG from "@/shared/ui/AnimateBG.vue";
+import ConfirmPopup from "primevue/confirmpopup";
+import Toast from "primevue/toast";
 
-    useTheme()
-    useUserPresence()
+useTheme();
+useUserPresence();
 </script>
 
 <template>
-    <AnimateBG />
-    <RouterView v-slot="{ Component }">
-        <transition
-            name="fade"
-            mode="out-in"
-            appear
-        >
-            <component :is="Component" />
-        </transition>
-    </RouterView>
-    <ConfirmPopup />
-    <Toast />
+  <AnimateBG />
+  <RouterView v-slot="{ Component }">
+    <transition name="fade" mode="out-in" appear>
+      <component :is="Component" />
+    </transition>
+  </RouterView>
+  <ConfirmPopup />
+  <Toast
+    :pt="{
+      root: { class: 'md:w-100! w-fit!' },
+    }"
+  />
 </template>
 
 <style scoped>
-    .fade-enter-active,
-    .fade-leave-active {
-        @apply transition-opacity duration-400;
-    }
+.fade-enter-active,
+.fade-leave-active {
+  @apply transition-opacity duration-400;
+}
 
-    .fade-enter-from,
-    .fade-leave-to {
-        @apply opacity-0;
-    }
+.fade-enter-from,
+.fade-leave-to {
+  @apply opacity-0;
+}
 </style>
