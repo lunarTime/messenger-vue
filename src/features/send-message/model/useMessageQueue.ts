@@ -53,7 +53,6 @@ export const useMessageQueue = defineStore("messageQueue", () => {
 
     if (!item) {
       isProcessing.value = false;
-
       return;
     }
 
@@ -62,6 +61,8 @@ export const useMessageQueue = defineStore("messageQueue", () => {
 
     try {
       await sendFn(item.text, item.options);
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       queue.value = queue.value.filter((m) => m.id !== item.id);
     } catch {
