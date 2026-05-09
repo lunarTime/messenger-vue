@@ -6,11 +6,13 @@ import {
   getUserById,
   subscribeToUser,
   subscribeToChatMemberMeta,
+  subscribeToMessageDeliveryStatus,
   setChatPinnedOrder,
 } from "@/shared/api/firebase/firestore";
 import type { Unsubscribe } from "firebase/firestore";
 import type { Chat } from "@/shared/types/chat";
 import type { User } from "@/shared/types/user";
+import type { MessageStatus } from "@/shared/types/message";
 
 type MillisLike = { toMillis: () => number };
 
@@ -46,6 +48,9 @@ export const useChatStore = defineStore("chat", () => {
   const userSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
   const temporaryChat = ref<TemporaryChat | null>(null);
   const memberMetaSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
+  const lastStatusSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
+  const lastMessageStatuses = ref<Map<string, MessageStatus>>(new Map());
+  const unreadCounts = ref<Map<string, number>>(new Map());
   const pinnedMap = ref<Map<string, boolean>>(new Map());
   const pinnedOrderMap = ref<Map<string, number>>(new Map());
   const roleMap = ref<Map<string, string>>(new Map());
@@ -85,6 +90,50 @@ export const useChatStore = defineStore("chat", () => {
     return list;
   });
 
+  const _refreshLastStatusSub = (chat: Chat) => {
+    const myIdVal = myId.value;
+
+    if (!myIdVal) return;
+
+    const lastMsg = chat.lastMessage;
+    const isOutgoing = lastMsg?.senderId === myIdVal;
+
+    if (!isOutgoing || !lastMsg?.id) {
+      lastStatusSubscriptions.value.get(chat.id)?.();
+      lastStatusSubscriptions.value.delete(chat.id);
+      lastMessageStatuses.value.delete(chat.id);
+
+      return;
+    }
+
+    const otherUserId = chat.participants.find((id) => id !== myIdVal);
+
+    if (!otherUserId) return;
+
+    const key = `${chat.id}:${lastMsg.id}`;
+
+    if (lastStatusSubscriptions.value.has(key)) return;
+
+    for (const [k, unsub] of lastStatusSubscriptions.value.entries()) {
+      if (k.startsWith(`${chat.id}:`)) {
+        unsub();
+
+        lastStatusSubscriptions.value.delete(k);
+      }
+    }
+
+    const unsub = subscribeToMessageDeliveryStatus(
+      lastMsg.id,
+      chat.id,
+      otherUserId,
+      (status) => {
+        if (status) lastMessageStatuses.value.set(chat.id, status);
+        else lastMessageStatuses.value.delete(chat.id);
+      },
+    );
+    lastStatusSubscriptions.value.set(key, unsub);
+  };
+
   const loadChats = () => {
     const myIdVal = myId.value;
     if (!myIdVal) {
@@ -97,68 +146,78 @@ export const useChatStore = defineStore("chat", () => {
 
     isLoading.value = true;
 
-    unsubscribeChats.value = subscribeToUserChats(
-      myIdVal,
-      async (loadedChats) => {
-        chats.value = loadedChats;
+    unsubscribeChats.value = subscribeToUserChats(myIdVal, (loadedChats) => {
+      chats.value = loadedChats;
 
-        const loadedChatIds = new Set(loadedChats.map((c) => c.id));
+      const loadedChatIds = new Set(loadedChats.map((c) => c.id));
 
-        memberMetaSubscriptions.value.forEach((unsub, chatId) => {
-          if (!loadedChatIds.has(chatId)) {
-            unsub();
-            memberMetaSubscriptions.value.delete(chatId);
-            pinnedMap.value.delete(chatId);
-            pinnedOrderMap.value.delete(chatId);
-            roleMap.value.delete(chatId);
-          }
-        });
+      memberMetaSubscriptions.value.forEach((unsub, chatId) => {
+        if (!loadedChatIds.has(chatId)) {
+          unsub();
+          memberMetaSubscriptions.value.delete(chatId);
+          pinnedMap.value.delete(chatId);
+          pinnedOrderMap.value.delete(chatId);
+          roleMap.value.delete(chatId);
+        }
+      });
 
-        for (const chat of loadedChats) {
-          if (memberMetaSubscriptions.value.has(chat.id)) continue;
+      for (const [key, unsub] of lastStatusSubscriptions.value.entries()) {
+        const chatId = key.split(":")[0]!;
 
+        if (!loadedChatIds.has(chatId)) {
+          unsub();
+          lastStatusSubscriptions.value.delete(key);
+          lastMessageStatuses.value.delete(chatId);
+        }
+      }
+
+      for (const chat of loadedChats) {
+        if (!memberMetaSubscriptions.value.has(chat.id)) {
           const unsub = subscribeToChatMemberMeta(chat.id, myIdVal, (meta) => {
             pinnedMap.value.set(chat.id, meta.isPinned);
             roleMap.value.set(chat.id, meta.role);
+            unreadCounts.value.set(chat.id, meta.unreadCount);
+
             if (typeof meta.pinnedOrder === "number") {
               pinnedOrderMap.value.set(chat.id, meta.pinnedOrder);
             } else {
               pinnedOrderMap.value.delete(chat.id);
             }
           });
-
           memberMetaSubscriptions.value.set(chat.id, unsub);
         }
 
-        const participantIds = new Set<string>();
+        _refreshLastStatusSub(chat);
+      }
 
-        loadedChats.forEach((chat) => {
-          for (const id of chat.participants) {
-            if (id !== myIdVal) {
-              participantIds.add(id);
-            }
-          }
-        });
-
-        for (const userId of participantIds) {
-          if (userSubscriptions.value.has(userId)) {
-            continue;
-          }
-
-          const unsubscribe = subscribeToUser(userId, (user) => {
-            if (user) {
-              chatParticipants.value.set(userId, user);
-            } else {
-              chatParticipants.value.delete(userId);
-            }
-          });
-
-          userSubscriptions.value.set(userId, unsubscribe);
+      const participantIds = new Set<string>();
+      loadedChats.forEach((chat) => {
+        for (const id of chat.participants) {
+          if (id !== myIdVal) participantIds.add(id);
         }
+      });
 
-        isLoading.value = false;
-      },
-    );
+      for (const userId of participantIds) {
+        if (userSubscriptions.value.has(userId)) continue;
+
+        const unsub = subscribeToUser(userId, (user) => {
+          if (user) chatParticipants.value.set(userId, user);
+          else chatParticipants.value.delete(userId);
+        });
+        userSubscriptions.value.set(userId, unsub);
+      }
+
+      for (const [userId, unsub] of userSubscriptions.value.entries()) {
+        if (!participantIds.has(userId)) {
+          unsub();
+
+          userSubscriptions.value.delete(userId);
+          chatParticipants.value.delete(userId);
+        }
+      }
+
+      isLoading.value = false;
+    });
   };
 
   const selectChat = (chatId: string) => {
@@ -304,6 +363,10 @@ export const useChatStore = defineStore("chat", () => {
     userSubscriptions.value.clear();
     memberMetaSubscriptions.value.forEach((unsub) => unsub());
     memberMetaSubscriptions.value.clear();
+    lastStatusSubscriptions.value.forEach((unsub) => unsub());
+    lastStatusSubscriptions.value.clear();
+    lastMessageStatuses.value.clear();
+    unreadCounts.value.clear();
     pinnedMap.value.clear();
     pinnedOrderMap.value.clear();
     chats.value = [];
@@ -356,6 +419,8 @@ export const useChatStore = defineStore("chat", () => {
     isLoading,
     visibleChats,
     temporaryChat,
+    lastMessageStatuses,
+    unreadCounts,
     loadChats,
     selectChat,
     closeActiveChat,

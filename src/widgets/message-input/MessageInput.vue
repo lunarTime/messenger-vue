@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, nextTick, defineAsyncComponent, watch, computed } from "vue";
+import {
+  ref,
+  nextTick,
+  defineAsyncComponent,
+  watch,
+  computed,
+  onMounted,
+  onUnmounted,
+} from "vue";
 import { onClickOutside } from "@vueuse/core";
 import { useMessageInput } from "@/features/send-message/model/useMessageInput";
 import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
@@ -16,6 +24,20 @@ import "vue3-emoji-picker/css";
 
 const EmojiPicker = defineAsyncComponent(() => import("vue3-emoji-picker"));
 
+const textareaRef = ref<any>(null);
+
+const getTextarea = (): HTMLTextAreaElement | null => {
+  const el = textareaRef.value?.$el;
+
+  if (!el) return null;
+
+  return el.tagName === "TEXTAREA" ? el : el.querySelector("textarea");
+};
+
+const focusTextarea = () => {
+  nextTick(() => getTextarea()?.focus());
+};
+
 const {
   message,
   isSending,
@@ -29,13 +51,13 @@ const {
   handleKeyDown,
   maxLength,
   fileUpload,
-} = useMessageInput();
+} = useMessageInput(focusTextarea);
+
 const { isMobile } = useIsMobile();
 const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
 const { isDark } = useTheme();
 const messageCompose = useMessageCompose();
 
-const textareaRef = ref<any>(null);
 const isEmojiOpen = ref(false);
 const pickerRef = ref<HTMLElement | null>(null);
 const pickerKey = ref(0);
@@ -43,46 +65,32 @@ const savedCursorPos = ref<number | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isDragging = ref(false);
 const dragCounter = ref(0);
+const fileErrors = ref<string[]>([]);
 
 type Emoji = { i: string };
 
-const getTextarea = (): HTMLTextAreaElement | null => {
-  const el = textareaRef.value?.$el;
-
-  if (!el) return null;
-
-  return el.tagName === "TEXTAREA" ? el : el.querySelector("textarea");
-};
-
 const saveCursorPos = () => {
   const el = getTextarea();
-
   if (el) savedCursorPos.value = el.selectionStart;
 };
 
 const onSelectEmoji = async (emoji: Emoji) => {
   const el = getTextarea();
-
   if (!el) return;
 
   const insertAt = savedCursorPos.value ?? message.value.length;
-
   message.value =
     message.value.slice(0, insertAt) + emoji.i + message.value.slice(insertAt);
-
   const newPos = insertAt + emoji.i.length;
-
   savedCursorPos.value = newPos;
 
   await nextTick();
-
   el.focus();
   el.setSelectionRange(newPos, newPos);
 };
 
 const toggleEmoji = () => {
   saveCursorPos();
-
   isEmojiOpen.value = !isEmojiOpen.value;
 };
 
@@ -94,43 +102,38 @@ watch(isDark, () => {
   if (isEmojiOpen.value) pickerKey.value++;
 });
 
+const showFileErrors = (errors: string[]) => {
+  fileErrors.value = errors;
+
+  setTimeout(() => {
+    fileErrors.value = [];
+  }, 4000);
+};
+
 function openFilePicker() {
   fileInputRef.value?.click();
 }
 
 function onFileInputChange(event: Event) {
   const input = event.target as HTMLInputElement;
-
   if (!input.files) return;
 
-  const files = Array.from(input.files);
-  const errors = fileUpload.addFiles(files);
+  const errors = fileUpload.addFiles(Array.from(input.files));
 
-  if (errors.length) {
-    fileErrors.value = errors;
-
-    setTimeout(() => {
-      fileErrors.value = [];
-    }, 4000);
-  }
+  if (errors.length) showFileErrors(errors);
 
   input.value = "";
 }
 
-const fileErrors = ref<string[]>([]);
-
 function onDragEnter(event: DragEvent) {
   event.preventDefault();
-
   dragCounter.value++;
   isDragging.value = true;
 }
 
 function onDragLeave(event: DragEvent) {
   event.preventDefault();
-
   dragCounter.value--;
-
   if (dragCounter.value <= 0) {
     dragCounter.value = 0;
     isDragging.value = false;
@@ -143,36 +146,45 @@ function onDragOver(event: DragEvent) {
 
 function onDrop(event: DragEvent) {
   event.preventDefault();
-
   isDragging.value = false;
   dragCounter.value = 0;
 
   const files = Array.from(event.dataTransfer?.files ?? []);
-
   if (!files.length) return;
 
   const errors = fileUpload.addFiles(files);
-
-  if (errors.length) {
-    fileErrors.value = errors;
-
-    setTimeout(() => {
-      fileErrors.value = [];
-    }, 4000);
-  }
+  if (errors.length) showFileErrors(errors);
 }
 
 function getFileIcon(mimeType: string): string {
   if (mimeType.startsWith("image/")) return "pi-image";
   if (mimeType.startsWith("video/")) return "pi-video";
   if (mimeType.startsWith("audio/")) return "pi-volume-up";
-
   return "pi-file";
 }
 
 const canAddMore = computed(
   () => fileUpload.pendingFiles.value.length < MAX_FILES_PER_MESSAGE,
 );
+
+const onGlobalKeyDown = (e: KeyboardEvent) => {
+  const ta = getTextarea();
+
+  if (!ta) return;
+  if (document.activeElement === ta) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key.length !== 1) return;
+
+  const tag = (document.activeElement as HTMLElement)?.tagName;
+
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if ((document.activeElement as HTMLElement)?.isContentEditable) return;
+
+  ta.focus();
+};
+
+onMounted(() => window.addEventListener("keydown", onGlobalKeyDown));
+onUnmounted(() => window.removeEventListener("keydown", onGlobalKeyDown));
 </script>
 
 <template>
@@ -338,19 +350,11 @@ const canAddMore = computed(
 
           <div
             v-else
-            class="flex h-26! w-22! rounded-lg flex-col items-center justify-center gap-1 relative"
+            class="flex h-26! w-22! rounded-lg flex-col items-center justify-center gap-1 relative overflow-hidden"
           >
-            <i
-              :class="[
-                'pi',
-                getFileIcon(pf.file.type),
-                'text-xl text-surface-500',
-              ]"
-            />
+            <i :class="['pi', getFileIcon(pf.file.type), 'text-xl']" />
             <div class="flex justify-between self-start text-xs">
-              <span class="line-clamp-2 text-center">
-                {{ pf.file.name }}
-              </span>
+              <span class="line-clamp-2 text-center">{{ pf.file.name }}</span>
             </div>
 
             <div
@@ -377,9 +381,9 @@ const canAddMore = computed(
             >
               <i class="pi pi-refresh text-white text-sm" />
             </div>
-            <span class="text-xs max-w-16 truncate">
-              {{ formatFileSize(pf.file.size) }}
-            </span>
+            <span class="text-xs max-w-16 truncate">{{
+              formatFileSize(pf.file.size)
+            }}</span>
 
             <Button
               v-if="pf.status !== 'uploading'"
