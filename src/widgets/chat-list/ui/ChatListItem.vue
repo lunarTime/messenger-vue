@@ -225,7 +225,7 @@ const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
           </p>
         </div>
 
-        <div class="shrink-0">
+        <div class="flex shrink-0">
           <template v-if="isLastOutgoing">
             <i
               v-if="lastMessageStatus === 'failed'"
