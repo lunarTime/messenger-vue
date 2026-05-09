@@ -627,11 +627,11 @@ export async function sendMessage(
     messageData.attachments = options.attachments;
   }
 
-  const messageRef = await addDoc(
-    collection(db, "chats", chatId, "messages"),
-    messageData,
-  );
+  const messageRef = doc(collection(db, "chats", chatId, "messages"));
   const messageId = messageRef.id;
+
+  await setDoc(messageRef, messageData);
+
   const chatDoc = await getDoc(doc(db, "chats", chatId));
 
   if (chatDoc.exists()) {
