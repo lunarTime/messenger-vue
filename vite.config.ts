@@ -42,15 +42,31 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (id.includes("node_modules")) {
-              if (id.includes("firebase")) {
-                return "firebase";
-              }
-              if (id.includes("primevue")) {
-                return "primevue";
-              }
-              return "vendor";
-            }
+            if (!id.includes("node_modules")) return;
+
+            if (id.includes("firebase")) return "firebase";
+            if (id.includes("@primeuix/styles")) return "primevue-styles";
+            if (id.includes("@primeuix")) return "primevue-utils";
+            if (id.includes("primevue") || id.includes("@primevue"))
+              return "primevue";
+
+            if (id.includes("vue-virtual-scroller")) return "virtual-scroller";
+            if (id.includes("vue3-emoji-picker")) return "emoji-picker";
+            if (id.includes("isomorphic-dompurify") || id.includes("dompurify"))
+              return "dompurify";
+
+            if (id.includes("@vueuse")) return "vueuse";
+            if (id.includes("@heroicons")) return "heroicons";
+            if (id.includes("zod")) return "zod";
+            if (
+              id.includes("/vue/") ||
+              id.includes("/vue-router/") ||
+              id.includes("/pinia/") ||
+              id.includes("@vue/")
+            )
+              return "vue-core";
+
+            return "vendor";
           },
         },
       },
