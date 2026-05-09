@@ -8,7 +8,6 @@ import {
   computed,
   provide,
 } from "vue";
-import { useScroll, useThrottleFn } from "@vueuse/core";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import { useMessageStore } from "@/entities/message/store/message.store";
@@ -30,7 +29,6 @@ import Avatar from "primevue/avatar";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
 import { markChatAsRead } from "@/shared/api/firebase/firestore";
 import { useMessageQueue } from "@/features/send-message/model/useMessageQueue";
-import ChatBubble from "@/shared/ui/ChatBubble.vue";
 
 const confirm = useConfirm();
 const toast = useToast();
@@ -86,6 +84,7 @@ const { groupedMessages } = useMessageGrouping(
 );
 
 const containerRef = ref<HTMLElement | null>(null);
+const messagesContentRef = ref<HTMLElement | null>(null);
 const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 
 provide("chatScrollContainer", containerRef);
@@ -190,88 +189,107 @@ const showEmptyState = computed(
   () => !messageStore.isLoading && !hasMessages.value,
 );
 
-const { arrivedState } = useScroll(containerRef, {
-  throttle: 100,
-  offset: { bottom: 150 },
+const FAR_FROM_BOTTOM = 700;
+
+const getDistanceFromBottom = (): number => {
+  if (!containerRef.value) return 0;
+
+  const { scrollTop, scrollHeight, clientHeight } = containerRef.value;
+
+  return scrollHeight - scrollTop - clientHeight;
+};
+
+const scrollToBottom = () => {
+  const el = containerRef.value;
+
+  if (!el) return;
+
+  el.scrollTop = el.scrollHeight;
+  isUserScrolling.value = false;
+};
+
+let lastKnownDistanceFromBottom = 0;
+
+const onContainerScroll = () => {
+  lastKnownDistanceFromBottom = getDistanceFromBottom();
+  isUserScrolling.value = lastKnownDistanceFromBottom > 50;
+};
+
+watch(containerRef, (el, oldEl) => {
+  oldEl?.removeEventListener("scroll", onContainerScroll);
+  el?.addEventListener("scroll", onContainerScroll);
 });
 
-const scrollToBottom = useThrottleFn(async (smooth = true) => {
-  await nextTick();
+let shouldScrollToBottom = false;
+let resizeObserver: ResizeObserver | null = null;
 
-  if (!containerRef.value) {
-    return;
-  }
+const setupResizeObserver = (contentEl: HTMLElement) => {
+  resizeObserver?.disconnect();
 
-  containerRef.value.scrollTo({
-    top: containerRef.value.scrollHeight,
-    behavior: smooth ? "smooth" : "auto",
+  let lastContentHeight = contentEl.offsetHeight;
+
+  resizeObserver = new ResizeObserver(() => {
+    const newHeight = contentEl.offsetHeight;
+    const grew = newHeight > lastContentHeight;
+
+    lastContentHeight = newHeight;
+
+    if (!shouldScrollToBottom || !grew) return;
+
+    shouldScrollToBottom = false;
+
+    const el = containerRef.value;
+
+    if (!el) return;
+
+    el.scrollTop = el.scrollHeight;
   });
 
-  isUserScrolling.value = false;
-}, 100);
+  resizeObserver.observe(contentEl);
+};
 
-watch(arrivedState, (state) => {
-  isUserScrolling.value = !state.bottom;
+watch(messagesContentRef, (el, oldEl) => {
+  if (oldEl) resizeObserver?.disconnect();
+  if (el) setupResizeObserver(el);
 });
 
 watch(
-  () => messageQueue.queue.length,
-  async (newLen, oldLen) => {
-    if (newLen > oldLen) {
-      await scrollToBottom(true);
-    }
+  () => {
+    const msgs = messageStore.messages;
+
+    return msgs.length > 0 ? msgs[msgs.length - 1]!.id : null;
   },
-);
+  (newLastId, oldLastId) => {
+    if (!newLastId) return;
+    if (messageStore.isLoadingOlderMessages) return;
+    if (newLastId === oldLastId) return;
+    if (chatStore.activeChatId && userStore.userId) {
+      markChatAsRead(chatStore.activeChatId, userStore.userId);
+    }
 
-const previousLastMessageId = ref<string | null>(null);
+    const isInitialLoad = oldLastId === null;
+    const shouldScroll =
+      isInitialLoad || lastKnownDistanceFromBottom <= FAR_FROM_BOTTOM;
 
-watch(
-  () => messageStore.messages.length,
-  async (newLength, oldLength) => {
-    if (newLength === 0) return;
-
-    if (newLength > oldLength) {
-      const lastMessage = messageStore.messages[newLength - 1];
-
-      if (chatStore.activeChatId && userStore.userId) {
-        await markChatAsRead(chatStore.activeChatId, userStore.userId);
-      }
-
-      const isNewMessageAdded = lastMessage?.id !== previousLastMessageId.value;
-      const isFirstMessageChanged =
-        oldLength > 0 && previousLastMessageId.value !== null;
-
-      previousLastMessageId.value = lastMessage?.id || null;
-
-      if (!isNewMessageAdded && isFirstMessageChanged) {
-        return;
-      }
-
-      if (lastMessage?.senderId === userStore.userId || arrivedState.bottom) {
-        await scrollToBottom(lastMessage?.senderId === userStore.userId);
-      }
+    if (shouldScroll) {
+      shouldScrollToBottom = true;
     }
   },
 );
 
 watch(
   () => chatStore.activeChatId,
-  async (newChatId, oldChatId) => {
+  (newChatId, oldChatId) => {
     if (!newChatId || newChatId === oldChatId) return;
 
     selection.exit();
-    previousLastMessageId.value = null;
 
     if (userStore.userId) {
-      await markChatAsRead(newChatId, userStore.userId);
+      markChatAsRead(newChatId, userStore.userId);
     }
 
     isUserScrolling.value = false;
-
-    await nextTick();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    await scrollToBottom(false);
+    shouldScrollToBottom = true;
   },
   { immediate: true },
 );
@@ -419,16 +437,14 @@ const onKeyDown = (e: KeyboardEvent) => {
   }
 };
 
-onMounted(async () => {
+onMounted(() => {
   window.addEventListener("keydown", onKeyDown);
-
-  await nextTick();
-  await scrollToBottom(false);
 });
 
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeyDown);
   sentinelObserver?.disconnect();
+  resizeObserver?.disconnect();
 });
 </script>
 
@@ -474,7 +490,7 @@ onUnmounted(() => {
       @mouseup="onMouseUp"
       @mouseleave="onMouseUp"
     >
-      <div class="flex flex-col gap-6">
+      <div ref="messagesContentRef" class="flex flex-col gap-6">
         <div ref="loadMoreSentinelRef" class="h-1 w-full">
           <div
             v-if="messageStore.isLoadingMore"
@@ -587,33 +603,6 @@ onUnmounted(() => {
             </div>
           </div>
         </template>
-
-        <div v-if="messageQueue.queue.length" class="flex flex-col gap-1">
-          <div
-            v-for="item in messageQueue.queue"
-            :key="item.id"
-            class="flex flex-row-reverse w-full"
-          >
-            <div class="flex flex-col items-end gap-1 flex-1 min-w-0">
-              <ChatBubble
-                :text="item.text"
-                variant="outgoing"
-                :created-at="null"
-                :delivery-status="
-                  item.status === 'failed' ? 'failed' : 'sending'
-                "
-                :attachments="item.options.attachments"
-              />
-              <button
-                v-if="item.status === 'failed'"
-                class="text-xs text-red-400 hover:text-red-300 transition-colors px-1"
-                @click="messageQueue.retry(item.id)"
-              >
-                Повторить
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -627,7 +616,7 @@ onUnmounted(() => {
     >
       <Button
         v-if="isUserScrolling && hasMessages"
-        @click="scrollToBottom(true)"
+        @click="scrollToBottom()"
         class="absolute bottom-8 left-1/2 md:w-20! w-fit! rounded-2xl! -translate-x-1/2 z-30 opacity-45! active:opacity-100! transition-all!"
         icon="pi pi-arrow-down"
         severity="contrast"
