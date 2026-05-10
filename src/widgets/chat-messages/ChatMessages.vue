@@ -23,7 +23,7 @@ import ChatMessageItem from "@/widgets/chat-messages/ui/ChatMessageItem.vue";
 import SystemMessageItem from "@/widgets/chat-messages/ui/SystemMessageItem.vue";
 import ForwardDialog from "@/features/message-actions/ui/ForwardDialog.vue";
 import EditMessageDialog from "@/features/message-actions/ui/EditMessageDialog.vue";
-import ProgressSpinner from "primevue/progressspinner";
+import Skeleton from "primevue/skeleton";
 import Button from "primevue/button";
 import Avatar from "primevue/avatar";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
@@ -78,6 +78,19 @@ const handleForward = (messageId: string) => {
 
   messageCompose.setForward({ message: msg, senderName });
 };
+
+const skeletonPattern = [
+  { id: 1, outgoing: false, width: "58%", height: "4rem" },
+  { id: 2, outgoing: false, width: "40%", height: "3.5rem" },
+  { id: 3, outgoing: true, width: "52%", height: "3.5rem" },
+  { id: 4, outgoing: false, width: "70%", height: "6.5rem" },
+  { id: 5, outgoing: true, width: "35%", height: "4rem" },
+  { id: 6, outgoing: true, width: "60%", height: "3.5rem" },
+  { id: 7, outgoing: false, width: "45%", height: "4.2rem" },
+  { id: 8, outgoing: true, width: "48%", height: "5.5rem" },
+  { id: 9, outgoing: false, width: "65%", height: "7rem" },
+  { id: 10, outgoing: true, width: "30%", height: "3.5rem" },
+];
 
 const { groupedMessages } = useMessageGrouping(
   computed(() => messageStore.messages),
@@ -450,19 +463,29 @@ onUnmounted(() => {
 
 <template>
   <div class="flex-1 min-h-0 relative">
-    <Transition
-      enter-active-class="transition-opacity duration-200"
-      enter-from-class="opacity-0"
-      leave-active-class="transition-opacity duration-200"
-      leave-to-class="opacity-0"
+    <div
+      v-if="messageStore.isLoading"
+      class="h-full overflow-hidden flex flex-col justify-end gap-1.5 pb-2 pr-2"
     >
-      <div
-        v-if="messageStore.isLoading"
-        class="flex items-center justify-center h-full absolute inset-0 z-10 bg-surface-0/90 dark:bg-surface-900/90 backdrop-blur-sm"
-      >
-        <ProgressSpinner />
-      </div>
-    </Transition>
+      <template v-for="item in skeletonPattern" :key="item.id">
+        <div
+          class="flex gap-2 w-full"
+          :class="item.outgoing ? 'flex-row-reverse' : 'flex-row'"
+        >
+          <div
+            class="flex flex-1 flex-col gap-1"
+            :class="item.outgoing ? 'items-end' : 'items-start'"
+          >
+            <Skeleton
+              :width="item.width"
+              :height="item.height"
+              :class="item.outgoing ? 'rounded-br-sm!' : 'rounded-bl-sm!'"
+              border-radius="1rem"
+            />
+          </div>
+        </div>
+      </template>
+    </div>
 
     <div
       v-if="showEmptyState"
@@ -490,27 +513,23 @@ onUnmounted(() => {
       @mouseup="onMouseUp"
       @mouseleave="onMouseUp"
     >
-      <div ref="messagesContentRef" class="flex flex-col gap-6">
-        <div ref="loadMoreSentinelRef" class="h-1 w-full">
+      <div ref="messagesContentRef" class="flex flex-col gap-2">
+        <div ref="loadMoreSentinelRef" class="flex justify-center">
           <div
             v-if="messageStore.isLoadingMore"
-            class="flex justify-center py-2"
-          >
-            <ProgressSpinner style="width: 24px; height: 24px" />
-          </div>
+            class="w-8 h-8 my-2 rounded-full border-2 border-(--p-primary-color)/30 border-t-(--p-primary-color) animate-spin"
+          />
         </div>
 
         <template v-for="dateGroup in groupedMessages" :key="dateGroup.date">
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-2">
             <div
-              class="sticky top-2 z-20 flex justify-center pointer-events-none mb-2"
+              class="sticky top-2 z-1 flex justify-center pointer-events-none"
             >
               <div
                 class="px-2 py-1 rounded-2xl bg-(--p-primary-color)/40 backdrop-blur-md shadow-sm pointer-events-auto"
               >
-                <span
-                  class="block text-sm font-bold text-surface-600 dark:text-surface-400"
-                >
+                <span class="block text-sm font-normal">
                   {{ dateGroup.date }}
                 </span>
               </div>
@@ -569,6 +588,12 @@ onUnmounted(() => {
                       ]"
                       shape="circle"
                       size="normal"
+                      :pt="{
+                        image: {
+                          alt: chatStore.chatParticipants.get(group.senderId!)
+                            ?.displayName,
+                        },
+                      }"
                     />
                   </div>
                 </div>
@@ -617,7 +642,7 @@ onUnmounted(() => {
       <Button
         v-if="isUserScrolling && hasMessages"
         @click="scrollToBottom()"
-        class="absolute bottom-8 left-1/2 md:w-20! w-fit! rounded-2xl! -translate-x-1/2 z-30 opacity-45! active:opacity-100! transition-all!"
+        class="absolute bottom-8 left-1/2 md:w-20! w-fit! rounded-2xl! -translate-x-1/2 z-1 opacity-45! active:opacity-100! transition-all!"
         icon="pi pi-arrow-down"
         severity="contrast"
         size="small"
