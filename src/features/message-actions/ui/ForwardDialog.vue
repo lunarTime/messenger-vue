@@ -238,6 +238,7 @@ const close = () => {
             :shape="chat.type === 'group' ? 'square' : 'circle'"
             size="normal"
             class="overflow-hidden shrink-0"
+            :pt="{ image: { alt: getChatAvatarLabel(chat) } }"
           />
           <span class="truncate font-medium text-sm">
             {{ getChatName(chat) }}
