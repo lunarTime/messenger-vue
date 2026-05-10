@@ -43,8 +43,10 @@ const sortedMembers = computed(() => {
   return [...members.value].sort((a, b) => {
     if (a.userId === chat.value?.createdBy) return -1;
     if (b.userId === chat.value?.createdBy) return 1;
-    if ((a.role === "owner" || a.role === "admin") && b.role === "member") return -1;
-    if (a.role === "member" && (b.role === "owner" || b.role === "admin")) return 1;
+    if ((a.role === "owner" || a.role === "admin") && b.role === "member")
+      return -1;
+    if (a.role === "member" && (b.role === "owner" || b.role === "admin"))
+      return 1;
 
     const nameA = participantsData.value.get(a.userId)?.displayName || "";
     const nameB = participantsData.value.get(b.userId)?.displayName || "";
@@ -114,36 +116,40 @@ onUnmounted(() => {
   <div
     class="flex flex-col h-full overflow-hidden bg-surface-50 dark:bg-surface-950"
   >
-    <div
-      class="flex flex-col items-center gap-4 p-8 bg-surface-0 dark:bg-surface-900 border-b border-surface-200 dark:border-surface-800"
-    >
-      <Avatar
-        :image="chat?.photoURL || undefined"
-        :icon="!chat?.photoURL ? 'pi pi-users' : undefined"
-        class="w-32! h-32! text-4xl! rounded-3xl! overflow-hidden shadow-lg"
-        :class="[!chat?.photoURL ? avatarBgColor + ' text-white!' : '']"
-        shape="square"
-        :pt="{
-          image: { class: 'object-cover' },
-        }"
-      />
+    <div class="flex flex-col items-center md:gap-2 gap-1 p-8">
+      <div class="relative">
+        <Avatar
+          :image="chat?.photoURL || undefined"
+          :icon="!chat?.photoURL ? 'pi pi-users' : undefined"
+          class="md:w-32! md:h-32! w-28! h-28! rounded-2xl! overflow-hidden shadow-lg"
+          :class="[!chat?.photoURL ? avatarBgColor + ' text-white!' : '']"
+          shape="square"
+          :pt="{
+            image: {
+              class: 'object-cover',
+              alt: chat?.name || 'Групповой чат',
+            },
+          }"
+        />
+        <Button
+          v-if="isAdmin"
+          icon="pi pi-pencil"
+          rounded
+          size="small"
+          class="absolute! -top-3 -right-3 w-8! h-8! opacity-50 hover:opacity-100 active:opacity-100 transition-opacity!"
+          @click="showEditModal = true"
+          aria-label="Редактировать группу"
+          v-tooltip.top="'Редактировать группу'"
+        />
+      </div>
+
       <div class="text-center">
         <div class="flex items-center justify-center gap-2">
-          <h2 class="text-2xl font-bold truncate max-w-[200px]">
+          <h2 class="md:text-2xl text-lg font-bold truncate max-w-[200px]">
             {{ chat?.name || "Групповой чат" }}
           </h2>
-          <Button
-            v-if="isAdmin"
-            icon="pi pi-pencil"
-            text
-            rounded
-            size="small"
-            class="w-8! h-8!"
-            @click="showEditModal = true"
-            v-tooltip.top="'Редактировать группу'"
-          />
         </div>
-        <p class="text-sm opacity-60 mt-1">{{ members.length }} участников</p>
+        <p class="text-sm opacity-70 mt-1">{{ members.length }} участников</p>
       </div>
 
       <div v-if="isAdmin" class="mt-2">
@@ -157,23 +163,24 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-4">
-      <h3
-        class="text-sm font-semibold opacity-50 uppercase tracking-wider mb-4 px-2"
-      >
+    <Divider class="md:my-0! my-2!" />
+
+    <div class="flex-1 overflow-y-auto">
+      <h3 class="md:my-4 mb-2 mt-0 md:text-xl text-lg font-semibold opacity-70">
         Участники
       </h3>
-      <div class="flex flex-col gap-1">
+      <div class="flex flex-col gap-2">
         <div
           v-for="member in sortedMembers"
           :key="member.userId"
-          class="flex items-center gap-3 p-3 rounded-2xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors group"
+          class="flex items-center gap-2 group"
         >
           <div class="relative">
             <Avatar
               :image="
                 participantsData.get(member.userId)?.photoURL || undefined
               "
+              shape="circle"
               :label="
                 !participantsData.get(member.userId)?.photoURL
                   ? (participantsData.get(member.userId)?.displayName || '?')
@@ -181,53 +188,49 @@ onUnmounted(() => {
                       .toUpperCase()
                   : undefined
               "
-              class="w-12! h-12! rounded-xl! overflow-hidden"
+              class="w-12! h-12! overflow-hidden"
               :class="[
                 !participantsData.get(member.userId)?.photoURL
                   ? getAvatarColor(member.userId) + ' text-white!'
                   : '',
               ]"
+              :pt="{
+                image: {
+                  alt: participantsData.get(member.userId)?.displayName,
+                },
+              }"
             />
             <div
               v-if="isUserOnline(member.userId)"
-              class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-surface-0 dark:border-surface-900 rounded-full"
+              class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full"
             />
           </div>
 
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="font-medium truncate">
+              <span
+                :aria-label="participantsData.get(member.userId)?.displayName"
+                v-tooltip.top="participantsData.get(member.userId)?.displayName"
+                class="text-sm font-medium truncate"
+              >
                 {{
                   participantsData.get(member.userId)?.displayName ||
                   "Загрузка..."
                 }}
                 <span
                   v-if="member.userId === userStore.userId"
-                  class="opacity-50 font-normal"
+                  class="opacity-50 text-xs"
                 >
                   (Вы)
                 </span>
               </span>
             </div>
-            <div class="text-xs opacity-60">
+            <div class="text-xs opacity-60 min-w-max">
               {{ isUserOnline(member.userId) ? "в сети" : "не в сети" }}
             </div>
           </div>
 
-          <div class="flex items-center gap-1">
-            <Badge
-              v-if="member.userId === chat?.createdBy"
-              value="Владелец"
-              severity="warn"
-              class="text-[10px]!"
-            />
-            <Badge
-              v-else-if="member.role === 'admin'"
-              value="Админ"
-              severity="info"
-              class="text-[10px]!"
-            />
-
+          <div class="flex items-center gap-4">
             <Button
               v-if="
                 isAdmin &&
@@ -239,9 +242,22 @@ onUnmounted(() => {
               text
               rounded
               size="small"
-              class="opacity-0 group-hover:opacity-100 transition-opacity"
+              class="md:opacity-0 md:group-hover:opacity-100 md:transition-opacity"
               @click="removeMember(chatId, member.userId)"
+              aria-label="Исключить из группы"
               v-tooltip.top="'Исключить из группы'"
+            />
+            <Badge
+              v-if="member.userId === chat?.createdBy"
+              value="Владелец"
+              severity="warn"
+              class="text-sm!"
+            />
+            <Badge
+              v-else-if="true"
+              value="Админ"
+              severity="info"
+              class="text-sm!"
             />
           </div>
         </div>
