@@ -28,7 +28,7 @@ const chatStore = useChatStore();
 const userStore = useUserStore();
 const toast = useToast();
 
-const chat = computed(() => chatStore.chats.find(c => c.id === props.chatId));
+const chat = computed(() => chatStore.chats.find((c) => c.id === props.chatId));
 
 const groupName = ref("");
 const groupPhotoURL = ref<string | null>(null);
@@ -36,14 +36,17 @@ const groupPhotoFile = ref<File | null>(null);
 const groupPhotoPreview = ref<string | null>("");
 const isUpdating = ref(false);
 
-watch(() => props.visible, (newVisible) => {
-  if (newVisible && chat.value) {
-    groupName.value = chat.value.name || "";
-    groupPhotoURL.value = chat.value.photoURL || null;
-    groupPhotoPreview.value = chat.value.photoURL || null;
-    groupPhotoFile.value = null;
-  }
-});
+watch(
+  () => props.visible,
+  (newVisible) => {
+    if (newVisible && chat.value) {
+      groupName.value = chat.value.name || "";
+      groupPhotoURL.value = chat.value.photoURL || null;
+      groupPhotoPreview.value = chat.value.photoURL || null;
+      groupPhotoFile.value = null;
+    }
+  },
+);
 
 const fileSizeLabel = computed(() => {
   if (!groupPhotoFile.value) return "";
@@ -137,18 +140,25 @@ const close = () => {
               },
             }"
           />
-          <FileUpload
-            mode="basic"
-            name="demo[]"
-            accept="image/*"
-            :max-file-size="5000000"
-            @select="onFileSelect"
-            @clear="clearGroupPhoto"
-            choose-label="Изменить"
-            severity="contrast"
-          />
-          <div v-if="groupPhotoFile" class="text-sm opacity-70">
-            {{ fileSizeLabel }}
+          <div class="flex flex-col items-center text-center gap-2">
+            <FileUpload
+              mode="basic"
+              name="demo[]"
+              accept="image/*"
+              :max-file-size="5000000"
+              @select="onFileSelect"
+              @clear="clearGroupPhoto"
+              choose-label="Изменить"
+              severity="contrast"
+              :pt="{
+                basiccontent: {
+                  class: 'flex-col',
+                },
+              }"
+            />
+            <div v-if="groupPhotoFile" class="text-sm opacity-70">
+              {{ fileSizeLabel }}
+            </div>
           </div>
         </div>
       </div>
