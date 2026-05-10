@@ -12,6 +12,16 @@ import Avatar from "primevue/avatar";
 import Badge from "primevue/badge";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
 
+function getCloudinaryAvatarUrl(url: string): string {
+  const match = url.match(
+    /^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/,
+  );
+
+  if (!match) return url;
+
+  return `${match[1]}w_48,h_48,c_fill,f_auto,q_auto/${match[2]}`;
+}
+
 const props = defineProps<{
   chatId: string;
   otherUserId: string;
@@ -170,14 +180,14 @@ const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
     />
     <div class="relative flex shrink-0">
       <Avatar
-        :image="photoURL ?? undefined"
+        :image="photoURL ? getCloudinaryAvatarUrl(photoURL) : undefined"
         :label="
           photoURL || isGroup
             ? undefined
             : (name?.charAt(0) || '?').toUpperCase()
         "
         :icon="!photoURL && isGroup ? 'pi pi-users' : undefined"
-        class="overflow-hidden"
+        class="overflow-hidden w-12 h-12"
         :class="[
           photoURL ? undefined : avatarBgColor + ' text-white!',
           isGroup ? 'rounded-xl!' : '',
@@ -186,7 +196,10 @@ const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
         size="large"
         :pt="{
           image: {
-            class: 'object-cover',
+            class: 'object-cover w-12 h-12',
+            alt: name,
+            width: '48',
+            height: '48',
           },
         }"
       />
@@ -210,7 +223,7 @@ const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
             {{ name }}
           </h3>
         </div>
-        <time v-if="displayDate" class="text-xs shrink-0 ml-2">
+        <time v-if="displayDate" class="text-xs shrink-0 ml-2 opacity-60">
           {{ displayDate }}
         </time>
       </div>

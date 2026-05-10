@@ -41,7 +41,7 @@
 </script>
 
 <template>
-    <div class="relative flex items-center justify-center min-h-screen">
+    <main class="relative flex items-center justify-center min-h-screen">
         <div class="absolute top-4 right-4 z-50">
             <ThemeSwitcher />
         </div>
@@ -90,10 +90,11 @@
                 <div class="flex items-center justify-center gap-2">
                     <Button
                         icon="pi pi-google"
+                        aria-label="Войти через Google"
                         @click="handleGoogleSignIn"
                     />
                 </div>
             </Tabs>
         </div>
-    </div>
+    </main>
 </template>

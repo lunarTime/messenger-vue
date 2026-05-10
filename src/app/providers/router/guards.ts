@@ -1,45 +1,50 @@
-import type { Router } from 'vue-router'
-import { watch } from 'vue'
-import { useUserStore } from '@/entities/user/store/user.store'
+import type { Router } from "vue-router";
+import { watch } from "vue";
+import { useUserStore } from "@/entities/user/store/user.store";
 
 export function setupRouterGuards(router: Router) {
-  router.beforeEach(async (to, _from, next) => {
-    const userStore = useUserStore()
+  router.beforeEach((to, _from, next) => {
+    const userStore = useUserStore();
+
+    const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+    const requiresGuest = to.matched.some(
+      (record) => record.meta.requiresGuest,
+    );
 
     if (userStore.isLoading) {
-      await new Promise<void>((resolve) => {
-        let isResolved = false;
+      const hasCache = !!userStore.cachedUserId;
 
-        const stop = watch(
-          () => userStore.isLoading,
-          (loading) => {
-            if (!loading && !isResolved) {
-              isResolved = true;
-              stop();
-              resolve();
-            }
-          },
-        );
+      if (requiresAuth && !hasCache) return next({ name: "auth" });
+      if (requiresGuest && hasCache) return next({ name: "chat" });
 
-        setTimeout(() => {
-          if (!isResolved) {
-            isResolved = true;
-            stop();
-            resolve();
-          }
-        }, 10000);
-      })
+      return next();
     }
-
-    const requiresAuth = to.matched.some((record) => record.meta.requiresAuth)
-    const requiresGuest = to.matched.some((record) => record.meta.requiresGuest)
 
     if (requiresAuth && !userStore.isAuthenticated) {
-      next({ name: 'auth' })
+      next({ name: "auth" });
     } else if (requiresGuest && userStore.isAuthenticated) {
-      next({ name: 'chat' })
+      next({ name: "chat" });
     } else {
-      next()
+      next();
     }
-  })
+  });
+
+  const userStore = useUserStore();
+  const stop = watch(
+    () => userStore.isLoading,
+    (loading) => {
+      if (loading) return;
+      stop();
+
+      const route = router.currentRoute.value;
+      const requiresAuth = route.matched.some((r) => r.meta.requiresAuth);
+      const requiresGuest = route.matched.some((r) => r.meta.requiresGuest);
+
+      if (requiresAuth && !userStore.isAuthenticated) {
+        router.replace({ name: "auth" });
+      } else if (requiresGuest && userStore.isAuthenticated) {
+        router.replace({ name: "chat" });
+      }
+    },
+  );
 }

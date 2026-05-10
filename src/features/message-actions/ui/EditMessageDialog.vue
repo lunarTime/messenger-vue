@@ -287,6 +287,7 @@ function onCancel() {
           text
           :disabled="!canAddMore || isRewriting"
           @click="openFilePicker"
+          aria-label="Прикрепить файл"
           v-tooltip.top="
             canAddMore
               ? 'Прикрепить файл'
@@ -313,6 +314,7 @@ function onCancel() {
               rounded
               text
               severity="help"
+              aria-label="Переписать в корпоративном стиле"
               v-tooltip.top="'Переписать в корпоративном стиле'"
             />
           </Transition>
@@ -324,6 +326,7 @@ function onCancel() {
             rounded
             text
             @mousedown.prevent="toggleEmoji"
+            aria-label="Открыть смайлы"
             v-tooltip.top="'Открыть смайлы'"
           />
         </div>

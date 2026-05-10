@@ -1,7 +1,18 @@
 @font-face {
-    font-family: 'Ysabeau';
-    src: url('./fonts/YsabeauInfant.ttf') format('truetype-variations');
-    font-weight: 100 900;
-    font-style: normal;
-    font-display: swap;
+  font-family: "Ysabeau";
+  src: url("./fonts/YsabeauInfant.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "primeicons";
+  src:
+    url("../../node_modules/primeicons/fonts/primeicons.woff2") format("woff2"),
+    url("../../node_modules/primeicons/fonts/primeicons.woff") format("woff"),
+    url("../../node_modules/primeicons/fonts/primeicons.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }

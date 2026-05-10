@@ -9,15 +9,51 @@ import {
 } from "@/shared/api/firebase/firestore";
 import type { User } from "@/shared/types/user";
 
+const USER_CACHE_KEY = "messenger_user_cache";
+
+type UserCache = Pick<User, "id" | "displayName" | "email" | "photoURL">;
+
+function readUserCache(): UserCache | null {
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+
+    return raw ? (JSON.parse(raw) as UserCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeUserCache(user: User) {
+  try {
+    const cache: UserCache = {
+      id: user.id,
+      displayName: user.displayName,
+      email: user.email,
+      photoURL: user.photoURL,
+    };
+
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+}
+
+function clearUserCache() {
+  localStorage.removeItem(USER_CACHE_KEY);
+}
+
 export const useUserStore = defineStore("user", () => {
+  const cachedUser = readUserCache();
+
   const currentUser = ref<User | null>(null);
   const firebaseUser = ref<FirebaseUser | null>(null);
   const isLoading = ref(true);
   const searchResults = ref<User[]>([]);
   const isSearching = ref(false);
 
-  const userId = computed(() => currentUser.value?.id ?? null);
+  const userId = computed(
+    () => currentUser.value?.id ?? cachedUser?.id ?? null,
+  );
   const isAuthenticated = computed(() => !!currentUser.value);
+  const cachedUserId = cachedUser?.id ?? null;
 
   const initAuth = () => {
     isLoading.value = true;
@@ -38,6 +74,8 @@ export const useUserStore = defineStore("user", () => {
           currentUser.value = userData;
 
           if (userData) {
+            writeUserCache(userData);
+
             await setUserOnlineStatus(user.uid, true);
           }
         } catch (error) {
@@ -45,6 +83,8 @@ export const useUserStore = defineStore("user", () => {
         }
       } else {
         currentUser.value = null;
+
+        clearUserCache();
       }
 
       isLoading.value = false;
@@ -97,6 +137,7 @@ export const useUserStore = defineStore("user", () => {
     userId,
     isAuthenticated,
     isLoading,
+    cachedUserId,
     searchResults,
     isSearching,
     initAuth,

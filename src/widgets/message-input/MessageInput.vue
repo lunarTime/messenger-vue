@@ -8,11 +8,10 @@ import {
   onMounted,
   onUnmounted,
 } from "vue";
-import { onClickOutside } from "@vueuse/core";
+import { onClickOutside, watchDebounced } from "@vueuse/core";
 import { useMessageInput } from "@/features/send-message/model/useMessageInput";
 import { useAiRewrite } from "@/features/ai-rewrite/model/useAiRewrite";
 import { useTheme } from "@/shared/composables/useTheme";
-import { useIsMobile } from "@/shared/composables/useIsMobile";
 import { useMessageCompose } from "@/shared/composables/useMessageCompose";
 import { formatFileSize } from "@/shared/lib/image/formatFileSize";
 import { MAX_FILES_PER_MESSAGE } from "@/shared/api/cloudinary";
@@ -38,6 +37,17 @@ const focusTextarea = () => {
   nextTick(() => getTextarea()?.focus());
 };
 
+const resetTextareaHeight = () => {
+  nextTick(() => {
+    const el = getTextarea();
+
+    if (!el) return;
+
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  });
+};
+
 const {
   message,
   isSending,
@@ -53,12 +63,24 @@ const {
   fileUpload,
 } = useMessageInput(focusTextarea);
 
-const { isMobile } = useIsMobile();
 const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
 const { isDark } = useTheme();
 const messageCompose = useMessageCompose();
 
+watchDebounced(
+  message,
+  (val, prevVal) => {
+    if (val.length < prevVal.length) resetTextareaHeight();
+  },
+  { debounce: 150 },
+);
+
 const isEmojiOpen = ref(false);
+const isFocused = ref(false);
+const showAiButton = computed(
+  () =>
+    !!message.value.trim() && !isSending && message.value.trim().length > 30,
+);
 const pickerRef = ref<HTMLElement | null>(null);
 const pickerKey = ref(0);
 const savedCursorPos = ref<number | null>(null);
@@ -402,7 +424,7 @@ onUnmounted(() => window.removeEventListener("keydown", onGlobalKeyDown));
         <button
           v-if="canAddMore"
           type="button"
-          class="flex-none w-22 h-22 rounded-lg border-2 border-dashed border-surface-300 dark:border-surface-600 flex flex-col items-center justify-center gap-1 text-surface-400 hover:border-(--p-primary-color) hover:text-(--p-primary-color) transition-colors cursor-pointer"
+          class="flex-none w-22 h-22 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 text-surface-400 hover:border-(--p-primary-color) hover:text-(--p-primary-color) transition-colors cursor-pointer"
           @click="openFilePicker"
         >
           <i class="pi pi-plus text-lg" />
@@ -412,96 +434,72 @@ onUnmounted(() => window.removeEventListener("keydown", onGlobalKeyDown));
     </Transition>
 
     <div class="flex gap-2">
-      <div class="flex-1 relative">
-        <Textarea
-          ref="textareaRef"
-          v-model="message"
-          :maxlength="maxLength"
-          :auto-resize="true"
-          :disabled="isSending || isRewriting"
-          @keydown="handleKeyDown"
-          @keyup="saveCursorPos"
-          @click="saveCursorPos"
-          @blur="saveCursorPos"
-          class="block w-full md:text-sm! text-xs! md:max-h-80 max-h-30 pl-8! pr-16!"
-          placeholder="Напишите сообщение..."
-          :rows="isMobile ? '3' : '4'"
-          fluid
-        />
-
-        <Button
-          type="button"
-          icon="pi pi-paperclip"
-          class="absolute! top-0 left-0 w-8! h-8!"
-          rounded
-          text
-          :disabled="!canAddMore || isSending"
-          @click="openFilePicker"
-          v-tooltip.top="
-            canAddMore
-              ? 'Прикрепить файл'
-              : `Максимум ${MAX_FILES_PER_MESSAGE} файлов`
-          "
-        />
-
-        <Transition
-          enter-active-class="transition-all duration-200 ease-out"
-          enter-from-class="opacity-0 translate-y-2 scale-95"
-          enter-to-class="opacity-100 translate-y-0 scale-100"
-          leave-active-class="transition-all duration-150 ease-in"
-          leave-from-class="opacity-100"
-          leave-to-class="opacity-0 translate-y-2 scale-95"
+      <Transition
+        enter-active-class="transition-all duration-350 ease-out"
+        enter-from-class="opacity-0 translate-y-2 scale-75"
+        enter-to-class="opacity-100 translate-y-0 scale-100"
+        leave-active-class="transition-all duration-350 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0 translate-y-2 scale-75"
+      >
+        <div
+          ref="pickerRef"
+          v-if="isEmojiOpen"
+          class="absolute bottom-full lg:left-0 md:opacity-75 md:hover:opacity-100 z-10000! transition-opacity"
         >
-          <div
-            ref="pickerRef"
-            v-if="isEmojiOpen"
-            class="absolute bottom-16 lg:right-0 -right-10 z-2"
-          >
-            <EmojiPicker
-              :key="pickerKey"
-              @select="onSelectEmoji"
-              :theme="isDark ? 'dark' : 'light'"
-              :static-texts="{ placeholder: 'Поиск эмодзи' }"
-              :disabled-groups="['flags']"
-              :disable-skin-tones="true"
-              :display-recent="true"
-              :native="true"
-              :group-names="{
-                smileys_people: 'Лиц и люди',
-                animals_nature: 'Животные и природа',
-                food_drink: 'Еда и напитки',
-                activities: 'Активности',
-                travel_places: 'Путешествие',
-                objects: 'Объекты',
-                symbols: 'Символы',
-                recent: 'Недавние',
-              }"
-            />
-          </div>
-        </Transition>
-
-        <div class="absolute flex items-center top-0 right-0 w-fit">
-          <Transition
-            enter-active-class="transition-opacity duration-200"
-            enter-from-class="opacity-0"
-            enter-to-class="opacity-100"
-            leave-active-class="transition-opacity duration-150"
-            leave-from-class="opacity-100"
-            leave-to-class="opacity-0"
-          >
-            <Button
-              v-if="message.trim() && !isSending"
-              type="button"
-              :loading="isRewriting"
-              @click="handleRewrite"
-              icon="pi pi-sparkles"
-              class="w-8! h-8!"
-              rounded
-              text
-              severity="help"
-              v-tooltip.top="'Переписать в корпоративном стиле'"
-            />
-          </Transition>
+          <EmojiPicker
+            :key="pickerKey"
+            @select="onSelectEmoji"
+            :theme="isDark ? 'dark' : 'light'"
+            :static-texts="{ placeholder: 'Поиск эмодзи' }"
+            :disabled-groups="['flags']"
+            :disable-skin-tones="true"
+            :display-recent="true"
+            :native="true"
+            :group-names="{
+              smileys_people: 'Лиц и люди',
+              animals_nature: 'Животные и природа',
+              food_drink: 'Еда и напитки',
+              activities: 'Активности',
+              travel_places: 'Путешествие',
+              objects: 'Объекты',
+              symbols: 'Символы',
+              recent: 'Недавние',
+            }"
+          />
+        </div>
+      </Transition>
+      <div
+        class="flex-1 relative overflow-hidden! flex flex-col rounded-sm border transition-all duration-200"
+        :class="
+          isFocused
+            ? 'border-(--p-textarea-focus-border-color)'
+            : 'border-(--p-textarea-border-color) hover:border-(--p-textarea-hover-border-color)'
+        "
+      >
+        <div
+          class="flex items-center w-full bg-(--p-textarea-background) border-b dark:border-gray-50/10 border-(--p-textarea-border-color) transition-colors duration-200"
+          :class="
+            isFocused
+              ? 'border-(--p-textarea-focus-border-color)'
+              : 'border-(--p-textarea-border-color)'
+          "
+        >
+          <Button
+            type="button"
+            icon="pi pi-paperclip"
+            class="w-8! h-8!"
+            rounded
+            text
+            :disabled="!canAddMore || isSending"
+            @click="openFilePicker"
+            aria-label="Прикрепить файл"
+            v-tooltip.top="
+              canAddMore
+                ? 'Прикрепить файл'
+                : `Максимум ${MAX_FILES_PER_MESSAGE} файлов`
+            "
+          />
 
           <Button
             type="button"
@@ -510,33 +508,72 @@ onUnmounted(() => window.removeEventListener("keydown", onGlobalKeyDown));
             rounded
             text
             @mousedown.prevent="toggleEmoji"
+            aria-label="Открыть смайлы"
             v-tooltip.top="'Открыть смайлы'"
           />
+
+          <Button
+            type="button"
+            :loading="isRewriting"
+            @click="handleRewrite"
+            icon="pi pi-sparkles"
+            class="w-8! h-8! transition-opacity! duration-200"
+            :class="
+              showAiButton ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            "
+            rounded
+            text
+            severity="help"
+            aria-label="Переписать в корпоративном стиле"
+            v-tooltip.top="'Переписать в корпоративном стиле'"
+          />
+          <Transition
+            enter-active-class="transition-opacity duration-200"
+            enter-from-class="opacity-0"
+            enter-to-class="opacity-100"
+            leave-active-class="transition-opacity duration-150"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+          >
+            <div
+              v-if="showCharacterCount"
+              class="text-xs px-2 py-1 ml-auto mr-2 rounded-xl backdrop-blur-sm"
+              :class="{
+                'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold':
+                  isAtLimit,
+                'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400':
+                  isNearLimit && !isAtLimit,
+                'dark:bg-white/10 bg-black/10': !isNearLimit,
+              }"
+            >
+              {{ charactersRemaining }}
+            </div>
+          </Transition>
         </div>
 
-        <Transition
-          enter-active-class="transition-opacity duration-200"
-          enter-from-class="opacity-0"
-          enter-to-class="opacity-100"
-          leave-active-class="transition-opacity duration-150"
-          leave-from-class="opacity-100"
-          leave-to-class="opacity-0"
-        >
-          <div
-            v-if="showCharacterCount"
-            class="absolute! bottom-2 right-2 text-xs px-2 py-1 rounded-md backdrop-blur-sm"
-            :class="{
-              'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold':
-                isAtLimit,
-              'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400':
-                isNearLimit && !isAtLimit,
-              'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400':
-                !isNearLimit,
-            }"
-          >
-            {{ charactersRemaining }}
-          </div>
-        </Transition>
+        <div class="relative flex-1">
+          <Textarea
+            ref="textareaRef"
+            id="chat-textarea"
+            name="chat-textarea"
+            v-model="message"
+            :maxlength="maxLength"
+            :auto-resize="true"
+            :disabled="isSending || isRewriting"
+            @keydown="handleKeyDown"
+            @keyup="saveCursorPos"
+            @click="saveCursorPos"
+            @focus="isFocused = true"
+            @blur="
+              isFocused = false;
+              saveCursorPos();
+            "
+            class="block w-full md:text-lg! text-sm! md:max-h-80 max-h-50 p-2! pt-1! border-none! shadow-none! rounded-none! outline-none!"
+            placeholder="Напишите сообщение..."
+            rows="1"
+            fluid
+          />
+        </div>
       </div>
 
       <Button

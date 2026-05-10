@@ -34,7 +34,9 @@ const onGroupCreated = (chatId: string) => {
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
+  <div
+    class="flex items-center gap-2 dark:bg-black/20 bg-white/40 rounded-md py-2 px-2"
+  >
     <div class="flex-1">
       <AutoComplete
         v-model="searchQuery"
@@ -65,6 +67,7 @@ const onGroupCreated = (chatId: string) => {
                   "
                   shape="circle"
                   size="large"
+                  :pt="{ image: { alt: option?.displayName } }"
                 />
 
                 <Transition
@@ -138,6 +141,7 @@ const onGroupCreated = (chatId: string) => {
       icon="pi pi-users"
       class="shrink-0"
       @click="isCreateModalVisible = true"
+      aria-label="Создать группу"
       title="Создать группу"
     />
 

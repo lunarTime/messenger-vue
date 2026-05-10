@@ -40,10 +40,15 @@ const toMillis = (value: MillisLike | null | undefined): number => {
 export const useChatStore = defineStore("chat", () => {
   const userStore = useUserStore();
 
+  const ACTIVE_CHAT_KEY = "messenger_active_chat_id";
+
   const chats = ref<Chat[]>([]);
-  const activeChatId = ref<string | null>(null);
+  const activeChatId = ref<string | null>(
+    sessionStorage.getItem(ACTIVE_CHAT_KEY),
+  );
   const chatParticipants = ref<Map<string, User>>(new Map());
-  const isLoading = ref(false);
+  const isLoading = ref(true);
+  const isInitialized = ref(false);
   const unsubscribeChats = ref<Unsubscribe | null>(null);
   const userSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
   const temporaryChat = ref<TemporaryChat | null>(null);
@@ -217,6 +222,15 @@ export const useChatStore = defineStore("chat", () => {
       }
 
       isLoading.value = false;
+      isInitialized.value = true;
+
+      const saved = sessionStorage.getItem(ACTIVE_CHAT_KEY);
+
+      if (saved && loadedChats.some((c) => c.id === saved)) {
+        activeChatId.value = saved;
+      } else if (saved && !loadedChats.some((c) => c.id === saved)) {
+        sessionStorage.removeItem(ACTIVE_CHAT_KEY);
+      }
     });
   };
 
@@ -226,10 +240,12 @@ export const useChatStore = defineStore("chat", () => {
     }
 
     activeChatId.value = chatId;
+    sessionStorage.setItem(ACTIVE_CHAT_KEY, chatId);
   };
 
   const closeActiveChat = () => {
     activeChatId.value = null;
+    sessionStorage.removeItem(ACTIVE_CHAT_KEY);
   };
 
   const openChatWith = async (userId: string): Promise<void> => {
@@ -371,8 +387,10 @@ export const useChatStore = defineStore("chat", () => {
     pinnedOrderMap.value.clear();
     chats.value = [];
     activeChatId.value = null;
+    sessionStorage.removeItem(ACTIVE_CHAT_KEY);
     chatParticipants.value.clear();
     temporaryChat.value = null;
+    isInitialized.value = false;
   };
 
   const isChatPinned = (chatId: string): boolean => {
@@ -417,6 +435,7 @@ export const useChatStore = defineStore("chat", () => {
     activeChat,
     chatParticipants,
     isLoading,
+    isInitialized,
     visibleChats,
     temporaryChat,
     lastMessageStatuses,

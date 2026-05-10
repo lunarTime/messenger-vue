@@ -176,7 +176,9 @@ onUnmounted(() => {
 <template>
   <div class="sticky top-0 z-10 flex flex-col">
     <div class="relative flex flex-col">
-      <div class="flex items-center justify-between">
+      <div
+        class="flex items-center justify-between dark:bg-black/20 bg-white/40 rounded-md md:py-2 md:pr-2 p-1"
+      >
         <div class="flex items-center gap-2 min-w-0">
           <Button
             @click="chatStore.closeActiveChat"
@@ -211,6 +213,7 @@ onUnmounted(() => {
                 :pt="{
                   image: {
                     class: 'object-cover',
+                    alt: chatName,
                   },
                 }"
               />
@@ -245,13 +248,8 @@ onUnmounted(() => {
   <Drawer
     v-model:visible="isInfoVisible"
     position="right"
-    header="Информация"
-    class="w-full! max-w-md! border-l border-surface-200 dark:border-surface-800"
-    :pt="{
-      root: { class: 'bg-surface-50 dark:bg-surface-950' },
-      header: { class: 'hidden' },
-      content: { class: 'p-0 h-full' },
-    }"
+    header="Информация о чате"
+    class="w-full! max-w-md! border-none! dark:bg-black/70! md:rounded-l-xl bg-white/70! backdrop-blur-xs"
   >
     <GroupChatInfo v-if="chat?.id" :chat-id="chat.id" />
   </Drawer>

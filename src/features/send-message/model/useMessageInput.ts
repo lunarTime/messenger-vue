@@ -103,7 +103,7 @@ export function useMessageInput(focusFn?: () => void) {
 
       message.value = newChatId ? draftStore.getDraft(newChatId) : "";
 
-      if (newChatId) focusFn?.();
+      if (newChatId) setTimeout(() => focusFn?.(), 320);
     },
     { immediate: true },
   );
