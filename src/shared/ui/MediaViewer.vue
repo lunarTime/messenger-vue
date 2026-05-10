@@ -125,6 +125,7 @@ function downloadCurrent() {
             text
             rounded
             size="small"
+            aria-label="Скачать"
             v-tooltip.bottom="'Скачать'"
             @click="downloadCurrent"
           />
@@ -133,6 +134,7 @@ function downloadCurrent() {
             text
             rounded
             size="small"
+            aria-label="Закрыть"
             v-tooltip.bottom="'Закрыть'"
             @click="close"
           />
