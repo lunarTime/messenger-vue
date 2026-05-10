@@ -9,7 +9,7 @@ import '@/assets/main.css'
 async function bootstrap() {
     const app = createApp(App)
 
-    await initializeApp(app)
+    initializeApp(app)
 
     app.mount('#app')
 }
