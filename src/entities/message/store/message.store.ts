@@ -46,12 +46,13 @@ export const useMessageStore = defineStore("messages", () => {
   watch(
     () => chatStore.activeChatId,
     (newChatId, oldChatId) => {
-      if (oldChatId) _teardown();
+      if (oldChatId && oldChatId !== newChatId) _teardown();
 
       if (newChatId && !newChatId.startsWith("temp_")) {
         _loadInitial(newChatId);
       }
     },
+    { immediate: true },
   );
 
   function _teardown() {
