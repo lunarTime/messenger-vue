@@ -12,6 +12,7 @@ import UserSearch from "@/widgets/chat-list/ui/ChatSearch.vue";
 import CurrentUser from "@/widgets/ui/CurrentUser.vue";
 import ScrollPanel from "primevue/scrollpanel";
 import Divider from "primevue/divider";
+import Skeleton from "primevue/skeleton";
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
@@ -124,7 +125,7 @@ const onPinnedDragOver = (chatId: string) => {
 
 <template>
   <div
-    class="flex flex-col h-full bg-(--p-primary-color)/20 md:gap-4 md:p-4 md:pr-2 gap-2 p-4 md:rounded-xl dark:bg-white/10"
+    class="flex flex-col h-full bg-(--p-primary-color)/20 md:gap-4 md:p-4 p-2 gap-2 md:rounded-xl dark:bg-white/10"
   >
     <UserSearch />
 
@@ -133,7 +134,32 @@ const onPinnedDragOver = (chatId: string) => {
       :class="{ 'pr-[16px]': !isMobile }"
     >
       <div
-        v-if="chatStore.visibleChats.length === 0 && !chatStore.isLoading"
+        v-if="chatStore.isLoading && !chatStore.isInitialized"
+        class="flex flex-col md:gap-2 gap-0 w-full"
+      >
+        <div
+          v-for="i in 6"
+          :key="i"
+          class="flex items-center md:gap-3 gap-1.5 p-2 rounded-xl"
+        >
+          <Skeleton shape="circle" size="3rem" />
+
+          <div class="flex flex-col flex-1">
+            <Skeleton width="55%" height="1.5rem" class="mb-[4px]" />
+            <Skeleton width="80%" height="1.313rem" />
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <Skeleton width="2rem" height="1rem" class="self-start" />
+            <Skeleton width="1rem" height="0.85rem" class="self-end" />
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-else-if="
+          chatStore.visibleChats.length === 0 && chatStore.isInitialized
+        "
         class="p-8 text-center"
       >
         <i class="pi pi-comments text-4xl mb-4"></i>
@@ -143,7 +169,7 @@ const onPinnedDragOver = (chatId: string) => {
 
       <div
         v-else
-        class="w-full min-w-0 overflow-hidden flex flex-col md:gap-2 gap-0"
+        class="w-full min-w-0 overflow-hidden flex flex-col md:gap-2 gap-0 md:p-0 pr-3"
       >
         <div v-if="pinnedChats.length" class="flex flex-col md:gap-2 gap-0">
           <ChatListItem
