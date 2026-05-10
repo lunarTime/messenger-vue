@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { computed, watch, onUnmounted } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useMessageStore } from "@/entities/message/store/message.store";
+import { useUserStore } from "@/entities/user/store/user.store";
 import { useIsMobile } from "@/shared/composables/useIsMobile";
 import { useSwipeBack } from "@/shared/composables/useSwipeBack";
 import ChatList from "@/widgets/chat-list/ChatList.vue";
@@ -13,7 +14,10 @@ import ChatMessages from "@/widgets/chat-messages/ChatMessages.vue";
 
 const chatStore = useChatStore();
 const messageStore = useMessageStore();
+const userStore = useUserStore();
 const { isMobile } = useIsMobile();
+
+const isChatPanelVisible = computed(() => !!chatStore.activeChat);
 
 useSwipeBack(() => {
   if (isMobile.value && chatStore.activeChat) {
@@ -21,9 +25,13 @@ useSwipeBack(() => {
   }
 });
 
-onMounted(() => {
-  chatStore.loadChats();
-});
+watch(
+  () => userStore.userId,
+  (userId, prevUserId) => {
+    if (userId && userId !== prevUserId) chatStore.loadChats();
+  },
+  { immediate: true },
+);
 
 onUnmounted(() => {
   chatStore.cleanup();
@@ -32,7 +40,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex h-full overflow-hidden">
+  <main class="flex h-full overflow-hidden">
     <template v-if="!isMobile">
       <Splitter class="w-full">
         <SplitterPanel class="max-w-130 min-w-90 w-1/2! h-full p-4 pr-0">
@@ -41,7 +49,7 @@ onUnmounted(() => {
         <SplitterPanel class="flex md:min-w-100 min-w-80">
           <div class="flex flex-col flex-1 min-w-0">
             <div
-              v-if="!chatStore.activeChat"
+              v-if="!isChatPanelVisible"
               class="flex items-center justify-center flex-1 gap-4 m-4 ml-0 p-4 text-muted bg-(--p-primary-color)/20 dark:bg-white/10 rounded-xl"
             >
               <p class="lg:text-xl text-lg">Выберите чат для начала общения</p>
@@ -65,18 +73,17 @@ onUnmounted(() => {
       <div class="relative w-full h-full overflow-hidden">
         <div
           class="absolute inset-0 w-full h-full transition-transform duration-300 ease-in-out"
-          :class="chatStore.activeChat ? '-translate-x-full' : 'translate-x-0'"
+          :class="isChatPanelVisible ? '-translate-x-full' : 'translate-x-0'"
         >
           <ChatList />
         </div>
 
         <div
           class="absolute inset-0 w-full h-full transition-transform duration-300 ease-in-out"
-          :class="chatStore.activeChat ? 'translate-x-0' : 'translate-x-full'"
+          :class="isChatPanelVisible ? 'translate-x-0' : 'translate-x-full'"
         >
           <div
-            v-if="chatStore.activeChat"
-            class="flex flex-col h-full md:gap-3 gap-2 p-3 bg-(--p-primary-color)/20 dark:bg-white/10"
+            class="flex flex-col h-full md:gap-3 gap-2 md:p-3 p-1 bg-(--p-primary-color)/20 dark:bg-white/10"
           >
             <ChatHeader :mobile="true" />
             <ChatMessages />
@@ -85,7 +92,7 @@ onUnmounted(() => {
         </div>
       </div>
     </template>
-  </div>
+  </main>
 </template>
 
 <style scoped>
