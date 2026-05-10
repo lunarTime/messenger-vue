@@ -156,8 +156,7 @@ const close = () => {
           <p class="text-sm text-center">Иконка группы</p>
           <Avatar
             :image="groupPhotoPreview || undefined"
-            :label="groupPhotoPreview ? undefined : ''"
-            :icon="!groupPhotoPreview && !groupName ? 'pi pi-users' : undefined"
+            :icon="!groupPhotoPreview ? 'pi pi-users' : undefined"
             shape="square"
             :class="[
               'w-24! h-24! rounded-2xl! text-3xl! justify-center overflow-hidden',
@@ -242,6 +241,7 @@ const close = () => {
                     : getAvatarColor(user.id) + ' text-white!'
                 "
                 shape="circle"
+                :pt="{ image: { alt: user.displayName } }"
               />
               <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">{{ user.displayName }}</div>
