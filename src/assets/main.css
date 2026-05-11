@@ -20,3 +20,41 @@ html {
   padding-right: env(safe-area-inset-right, 0px);
   box-sizing: border-box;
 }
+
+.p-toast-top-right,
+.p-toast-top-left,
+.p-toast-top-center {
+  top: calc(20px + env(safe-area-inset-top, 0px)) !important;
+}
+
+.p-toast-bottom-right,
+.p-toast-bottom-left,
+.p-toast-bottom-center {
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.p-drawer-mask.p-drawer-top .p-drawer {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.p-drawer-mask.p-drawer-bottom .p-drawer {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.p-drawer-mask.p-drawer-left .p-drawer {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.p-drawer-mask.p-drawer-right .p-drawer {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+@media (hover: none) {
+  .p-tooltip {
+    display: none !important;
+  }
+}

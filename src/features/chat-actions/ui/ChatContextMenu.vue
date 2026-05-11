@@ -23,7 +23,7 @@ const {
 
 const chat = computed(() => chatStore.chats.find((c) => c.id === props.chatId));
 
-const isAdmin = computed(() => chatStore.isChatAdmin(props.chatId));
+const isOwner = computed(() => chatStore.isChatOwner(props.chatId));
 
 const items = computed<MenuItem[]>(() => {
   const common = [
@@ -45,7 +45,7 @@ const items = computed<MenuItem[]>(() => {
       },
     ];
 
-    if (isAdmin.value) {
+    if (isOwner.value) {
       groupItems.push({
         label: "Удалить группу",
         icon: "pi pi-trash",
