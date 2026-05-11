@@ -16,6 +16,9 @@ import AddMemberModal from "./AddMemberModal.vue";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
 import { useChatActions } from "@/features/chat-actions/model/useChatActions";
 import EditGroupModal from "./EditGroupModal.vue";
+import UserViewPanel from "@/features/user-profile/ui/UserViewPanel.vue";
+import UserProfilePanel from "@/features/user-profile/ui/UserProfilePanel.vue";
+import Drawer from "primevue/drawer";
 
 const props = defineProps<{
   chatId: string;
@@ -23,15 +26,26 @@ const props = defineProps<{
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
-const { removeMember } = useChatActions();
+const { removeMember, promoteMember, demoteMember } = useChatActions();
 const now = useGlobalNow(30000);
 
 const members = ref<{ userId: string; role: ChatMemberRole }[]>([]);
 const participantsData = ref<Map<string, User>>(new Map());
 const showAddModal = ref(false);
 const showEditModal = ref(false);
+const viewingUserId = ref<string | null>(null);
+const showMyProfile = ref(false);
+
+const openMemberProfile = (userId: string) => {
+  if (userId === userStore.userId) {
+    showMyProfile.value = true;
+  } else {
+    viewingUserId.value = userId;
+  }
+};
 
 const chat = computed(() => chatStore.chats.find((c) => c.id === props.chatId));
+const isOwner = computed(() => chatStore.isChatOwner(props.chatId));
 const isAdmin = computed(() => chatStore.isChatAdmin(props.chatId));
 
 const avatarBgColor = computed(() => getAvatarColor(props.chatId));
@@ -113,15 +127,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div
-    class="flex flex-col h-full overflow-hidden bg-surface-50 dark:bg-surface-950"
-  >
-    <div class="flex flex-col items-center md:gap-2 gap-1 p-8">
+  <div class="flex flex-col h-full overflow-hidden">
+    <div class="flex flex-col items-center md:gap-2 gap-1 md:p-8 p-3">
       <div class="relative">
         <Avatar
           :image="chat?.photoURL || undefined"
           :icon="!chat?.photoURL ? 'pi pi-users' : undefined"
-          class="md:w-32! md:h-32! w-28! h-28! rounded-2xl! overflow-hidden shadow-lg"
+          class="md:w-32! md:h-32! w-22! h-22! rounded-2xl! overflow-hidden shadow-lg"
           :class="[!chat?.photoURL ? avatarBgColor + ' text-white!' : '']"
           shape="square"
           :pt="{
@@ -132,7 +144,7 @@ onUnmounted(() => {
           }"
         />
         <Button
-          v-if="isAdmin"
+          v-if="isOwner"
           icon="pi pi-pencil"
           rounded
           size="small"
@@ -145,7 +157,9 @@ onUnmounted(() => {
 
       <div class="text-center">
         <div class="flex items-center justify-center gap-2">
-          <h2 class="md:text-2xl text-lg font-bold truncate max-w-[200px]">
+          <h2
+            class="md:text-2xl text-lg font-bold truncate max-w-[200px] leading-6"
+          >
             {{ chat?.name || "Групповой чат" }}
           </h2>
         </div>
@@ -163,10 +177,10 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <Divider class="md:my-0! my-2!" />
+    <Divider class="md:my-0! my-1!" />
 
     <div class="flex-1 overflow-y-auto">
-      <h3 class="md:my-4 mb-2 mt-0 md:text-xl text-lg font-semibold opacity-70">
+      <h3 class="md:my-4 mb-2 mt-2 md:text-xl text-sm font-semibold opacity-70">
         Участники
       </h3>
       <div class="flex flex-col gap-2">
@@ -175,62 +189,96 @@ onUnmounted(() => {
           :key="member.userId"
           class="flex items-center gap-2 group"
         >
-          <div class="relative">
-            <Avatar
-              :image="
-                participantsData.get(member.userId)?.photoURL || undefined
-              "
-              shape="circle"
-              :label="
-                !participantsData.get(member.userId)?.photoURL
-                  ? (participantsData.get(member.userId)?.displayName || '?')
-                      .charAt(0)
-                      .toUpperCase()
-                  : undefined
-              "
-              class="w-12! h-12! overflow-hidden"
-              :class="[
-                !participantsData.get(member.userId)?.photoURL
-                  ? getAvatarColor(member.userId) + ' text-white!'
-                  : '',
-              ]"
-              :pt="{
-                image: {
-                  alt: participantsData.get(member.userId)?.displayName,
-                },
-              }"
-            />
-            <div
-              v-if="isUserOnline(member.userId)"
-              class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full"
-            />
-          </div>
+          <button
+            class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer rounded-lg py-1 px-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+            @click="openMemberProfile(member.userId)"
+          >
+            <div class="relative flex min-w-max">
+              <Avatar
+                :image="
+                  participantsData.get(member.userId)?.photoURL || undefined
+                "
+                shape="circle"
+                :label="
+                  !participantsData.get(member.userId)?.photoURL
+                    ? (participantsData.get(member.userId)?.displayName || '?')
+                        .charAt(0)
+                        .toUpperCase()
+                    : undefined
+                "
+                class="w-12! h-12! overflow-hidden"
+                :class="[
+                  !participantsData.get(member.userId)?.photoURL
+                    ? getAvatarColor(member.userId) + ' text-white!'
+                    : '',
+                ]"
+                :pt="{
+                  image: {
+                    alt: participantsData.get(member.userId)?.displayName,
+                    class: 'object-cover',
+                  },
+                }"
+              />
+              <div
+                v-if="isUserOnline(member.userId)"
+                class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full"
+              />
+            </div>
 
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <span
-                :aria-label="participantsData.get(member.userId)?.displayName"
-                v-tooltip.top="participantsData.get(member.userId)?.displayName"
-                class="text-sm font-medium truncate"
-              >
-                {{
-                  participantsData.get(member.userId)?.displayName ||
-                  "Загрузка..."
-                }}
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1">
+                <span class="text-sm font-medium truncate">
+                  {{
+                    participantsData.get(member.userId)?.displayName ||
+                    "Загрузка..."
+                  }}
+                </span>
                 <span
                   v-if="member.userId === userStore.userId"
-                  class="opacity-50 text-xs"
+                  class="opacity-50 text-xs flex-none"
                 >
                   (Вы)
                 </span>
-              </span>
+              </div>
+              <div class="text-xs opacity-60">
+                {{ isUserOnline(member.userId) ? "в сети" : "не в сети" }}
+              </div>
             </div>
-            <div class="text-xs opacity-60 min-w-max">
-              {{ isUserOnline(member.userId) ? "в сети" : "не в сети" }}
-            </div>
-          </div>
+          </button>
 
-          <div class="flex items-center gap-4">
+          <div class="flex items-center gap-1">
+            <Button
+              v-if="
+                isOwner &&
+                member.userId !== userStore.userId &&
+                member.role !== 'admin'
+              "
+              icon="pi pi-shield"
+              severity="secondary"
+              text
+              rounded
+              size="small"
+              class="md:opacity-0 md:group-hover:opacity-100 md:transition-opacity"
+              @click="promoteMember(chatId, member.userId)"
+              aria-label="Назначить администратором"
+              v-tooltip.top="'Назначить администратором'"
+            />
+            <Button
+              v-if="
+                isOwner &&
+                member.userId !== userStore.userId &&
+                member.role === 'admin'
+              "
+              icon="pi pi-shield"
+              severity="warn"
+              text
+              rounded
+              size="small"
+              class="md:opacity-0 md:group-hover:opacity-100 md:transition-opacity"
+              @click="demoteMember(chatId, member.userId)"
+              aria-label="Снять права администратора"
+              v-tooltip.top="'Снять права администратора'"
+            />
             <Button
               v-if="
                 isAdmin &&
@@ -254,7 +302,7 @@ onUnmounted(() => {
               class="text-sm!"
             />
             <Badge
-              v-else-if="true"
+              v-else-if="member.role === 'admin'"
               value="Админ"
               severity="info"
               class="text-sm!"
@@ -272,4 +320,41 @@ onUnmounted(() => {
 
     <EditGroupModal v-model:visible="showEditModal" :chat-id="chatId" />
   </div>
+
+  <Drawer
+    :visible="!!viewingUserId"
+    @update:visible="
+      (v) => {
+        if (!v) viewingUserId = null;
+      }
+    "
+    position="right"
+    header="Профиль"
+    class="w-full! max-w-md! border-none! dark:bg-black/70! md:rounded-l-xl bg-white/70! backdrop-blur-xs"
+    :pt="{
+      header: { class: 'md:p-[1.25rem]! p-3! pb-0!' },
+      title: { class: 'md:text-2xl! text-lg! leading-none!' },
+    }"
+  >
+    <UserViewPanel
+      :user-id="viewingUserId"
+      @open-chat="
+        chatStore.selectChat($event);
+        viewingUserId = null;
+      "
+    />
+  </Drawer>
+
+  <Drawer
+    v-model:visible="showMyProfile"
+    position="right"
+    header="Мой профиль"
+    class="w-full! max-w-md! border-none! dark:bg-black/70! md:rounded-l-xl bg-white/70! backdrop-blur-xs"
+    :pt="{
+      header: { class: 'md:p-[1.25rem]! p-3! pb-0!' },
+      title: { class: 'md:text-2xl! text-lg! leading-none!' },
+    }"
+  >
+    <UserProfilePanel :visible="showMyProfile" />
+  </Drawer>
 </template>
