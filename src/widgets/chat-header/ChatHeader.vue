@@ -14,6 +14,7 @@ import Button from "primevue/button";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
 import Drawer from "primevue/drawer";
 import GroupChatInfo from "@/features/chat-actions/ui/GroupChatInfo.vue";
+import UserViewPanel from "@/features/user-profile/ui/UserViewPanel.vue";
 import SelectionPanel from "@/features/message-actions/ui/SelectionPanel.vue";
 
 defineProps<{ mobile?: boolean }>();
@@ -28,6 +29,7 @@ let unsubscribeTyping: (() => void) | null = null;
 const otherUser = ref<User | null>(null);
 const typingUsers = ref<string[]>([]);
 const isInfoVisible = ref(false);
+const isUserViewVisible = ref(false);
 
 const chat = computed(() => chatStore.activeChat);
 const isGroup = computed(() => chat.value?.type === "group");
@@ -35,6 +37,8 @@ const isGroup = computed(() => chat.value?.type === "group");
 const openChatInformation = () => {
   if (isGroup.value) {
     isInfoVisible.value = true;
+  } else if (otherUserId.value) {
+    isUserViewVisible.value = true;
   }
 };
 
@@ -190,7 +194,8 @@ onUnmounted(() => {
           <div
             class="flex items-center gap-2 flex-1 min-w-0"
             :class="{
-              'cursor-pointer hover:opacity-80 transition-opacity': isGroup,
+              'cursor-pointer hover:opacity-80 transition-opacity':
+                isGroup || !!otherUserId,
             }"
             @click="openChatInformation"
           >
@@ -250,7 +255,30 @@ onUnmounted(() => {
     position="right"
     header="Информация о чате"
     class="w-full! max-w-md! border-none! dark:bg-black/70! md:rounded-l-xl bg-white/70! backdrop-blur-xs"
+    :pt="{
+      header: { class: 'md:p-[1.25rem]! p-3! pb-0!' },
+      title: { class: 'md:text-2xl! text-lg! leading-none!' },
+    }"
   >
     <GroupChatInfo v-if="chat?.id" :chat-id="chat.id" />
+  </Drawer>
+
+  <Drawer
+    v-model:visible="isUserViewVisible"
+    position="right"
+    header="Профиль"
+    class="w-full! max-w-md! border-none! dark:bg-black/70! md:rounded-l-xl bg-white/70! backdrop-blur-xs"
+    :pt="{
+      header: { class: 'md:p-[1.25rem]! p-3! pb-0!' },
+      title: { class: 'md:text-2xl! text-lg! leading-none!' },
+    }"
+  >
+    <UserViewPanel
+      :user-id="otherUserId"
+      @open-chat="
+        chatStore.selectChat($event);
+        isUserViewVisible = false;
+      "
+    />
   </Drawer>
 </template>
