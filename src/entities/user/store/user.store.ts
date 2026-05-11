@@ -6,8 +6,12 @@ import {
   getUserById,
   searchUsers,
   setUserOnlineStatus,
+  updateUserProfile,
+  subscribeToUser,
 } from "@/shared/api/firebase/firestore";
 import type { User } from "@/shared/types/user";
+import type { UserUpdateData } from "@/shared/types/user";
+import type { Unsubscribe } from "firebase/firestore";
 
 const USER_CACHE_KEY = "messenger_user_cache";
 
@@ -49,6 +53,8 @@ export const useUserStore = defineStore("user", () => {
   const searchResults = ref<User[]>([]);
   const isSearching = ref(false);
 
+  let selfUnsub: Unsubscribe | null = null;
+
   const userId = computed(
     () => currentUser.value?.id ?? cachedUser?.id ?? null,
   );
@@ -78,10 +84,20 @@ export const useUserStore = defineStore("user", () => {
 
             await setUserOnlineStatus(user.uid, true);
           }
+
+          selfUnsub?.();
+          selfUnsub = subscribeToUser(user.uid, (updated) => {
+            if (updated) {
+              currentUser.value = updated;
+              writeUserCache(updated);
+            }
+          });
         } catch (error) {
           currentUser.value = null;
         }
       } else {
+        selfUnsub?.();
+        selfUnsub = null;
         currentUser.value = null;
 
         clearUserCache();
@@ -121,6 +137,14 @@ export const useUserStore = defineStore("user", () => {
     searchResults.value = [];
   };
 
+  const updateProfile = async (data: UserUpdateData): Promise<void> => {
+    const id = userId.value;
+
+    if (!id) throw new Error("Пользователь не авторизован");
+
+    await updateUserProfile(id, data);
+  };
+
   const setOfflineStatus = async () => {
     if (userId.value) {
       try {
@@ -141,6 +165,7 @@ export const useUserStore = defineStore("user", () => {
     searchResults,
     isSearching,
     initAuth,
+    updateProfile,
     search,
     clearSearch,
     setOfflineStatus,
