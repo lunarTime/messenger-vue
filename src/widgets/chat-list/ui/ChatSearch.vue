@@ -49,7 +49,7 @@ const onGroupCreated = (chatId: string) => {
       >
         <template #option="{ option }">
           <div
-            class="flex items-center justify-between w-full gap-3 py-2 px-1 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-md transition-colors"
+            class="flex items-center justify-between w-full gap-3 py-2 px-1 rounded-md transition-colors"
           >
             <div class="flex items-center gap-3 flex-1 min-w-0">
               <div class="relative shrink-0">

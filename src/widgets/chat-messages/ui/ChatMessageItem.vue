@@ -186,7 +186,7 @@ useIntersectionObserver(
           :class="
             isSelected
               ? 'bg-(--p-primary-color) border-(--p-primary-color)'
-              : 'border-surface-400 dark:border-surface-500'
+              : 'border-black/20 dark:border-white/40'
           "
         >
           <i v-if="isSelected" class="pi pi-check text-white text-[10px]" />
