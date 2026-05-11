@@ -46,6 +46,7 @@ watch(
       groupPhotoFile.value = null;
     }
   },
+  { immediate: true },
 );
 
 const fileSizeLabel = computed(() => {
@@ -182,7 +183,7 @@ const close = () => {
         <Button
           label="Сохранить"
           :loading="isUpdating"
-          :disabled="!groupName.trim()"
+          :disabled="!groupName.trim() || (!groupPhotoFile && groupName.trim() === (chat?.name ?? '').trim())"
           @click="handleUpdate"
         />
       </div>
