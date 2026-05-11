@@ -401,6 +401,10 @@ export const useChatStore = defineStore("chat", () => {
     return roleMap.value.get(chatId) || "member";
   };
 
+  const isChatOwner = (chatId: string): boolean => {
+    return getMyRole(chatId) === "owner";
+  };
+
   const isChatAdmin = (chatId: string): boolean => {
     const role = getMyRole(chatId);
     return role === "admin" || role === "owner";
@@ -450,6 +454,7 @@ export const useChatStore = defineStore("chat", () => {
     getOtherUser,
     isChatPinned,
     getMyRole,
+    isChatOwner,
     isChatAdmin,
     getParticipantCount,
     reorderPinnedChats,
