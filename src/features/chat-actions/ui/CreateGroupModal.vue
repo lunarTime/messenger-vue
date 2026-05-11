@@ -208,7 +208,7 @@ const close = () => {
         </div>
 
         <ScrollPanel
-          class="h-64 border border-(--p-inputtext-border-color) rounded-xl bg-surface-50 dark:bg-surface-900/50"
+          class="h-64 border border-(--p-inputtext-border-color) rounded-xl"
         >
           <div
             v-if="interlocutors.length === 0"
@@ -220,7 +220,7 @@ const close = () => {
             <div
               v-for="user in interlocutors"
               :key="user.id"
-              class="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+              class="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors"
               @click="toggleUser(user.id)"
             >
               <Checkbox
