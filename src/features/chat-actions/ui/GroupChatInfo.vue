@@ -283,7 +283,8 @@ onUnmounted(() => {
               v-if="
                 isAdmin &&
                 member.userId !== userStore.userId &&
-                member.userId !== chat?.createdBy
+                member.userId !== chat?.createdBy &&
+                (isOwner || member.role !== 'admin')
               "
               icon="pi pi-user-minus"
               severity="secondary"
