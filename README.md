@@ -106,6 +106,7 @@ VITE_USE_FIREBASE_EMULATORS=false
 ```bash
 # Установить зависимости
 npm install
+```
 
 # Запустить dev-сервер
 npm run dev
