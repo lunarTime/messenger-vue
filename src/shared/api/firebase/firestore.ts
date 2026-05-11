@@ -193,10 +193,21 @@ export async function sendSystemMessage(
   extraData?: Partial<SystemMessageData>,
 ): Promise<string> {
   try {
+    const [actorUser, ...targetUsers] = await Promise.all([
+      getUserById(actorId),
+      ...(targetUserIds ?? []).map((id) => getUserById(id)),
+    ]);
+
     const systemData: SystemMessageData = {
       eventType,
       actorId,
-      targetUserIds,
+      actorName: actorUser?.displayName ?? "",
+      ...(targetUserIds && targetUserIds.length > 0
+        ? {
+            targetUserIds,
+            targetUserNames: targetUsers.map((u) => u?.displayName ?? ""),
+          }
+        : {}),
       ...extraData,
     };
 
@@ -466,6 +477,30 @@ export async function addGroupMembers(
   await sendSystemMessage(chatId, "user_added", addedBy, userIds);
 }
 
+export async function setMemberRole(
+  chatId: string,
+  userId: string,
+  role: ChatMemberRole,
+  actorId?: string,
+): Promise<void> {
+  if (!chatId || !userId) throw new Error("Invalid parameters");
+
+  await updateDoc(doc(db, "chats", chatId, "members", userId), { role });
+
+  if (actorId) {
+    const eventType =
+      role === "admin" ? "user_promoted_to_admin" : "user_demoted_from_admin";
+    try {
+      await sendSystemMessage(chatId, eventType, actorId, [userId]);
+    } catch (err) {
+      console.error(
+        "Non-critical: failed to send role change system message",
+        err,
+      );
+    }
+  }
+}
+
 export async function removeGroupMember(
   chatId: string,
   userId: string,
@@ -473,18 +508,18 @@ export async function removeGroupMember(
 ): Promise<void> {
   if (!chatId || !userId || !removedBy) throw new Error("Invalid parameters");
 
+  try {
+    await sendSystemMessage(chatId, "user_removed", removedBy, [userId]);
+  } catch (err) {
+    console.error("Non-critical: failed to send removal system message", err);
+  }
+
   await updateDoc(doc(db, "chats", chatId), {
     participants: arrayRemove(userId),
     updatedAt: serverTimestamp(),
   });
 
   await deleteDoc(doc(db, "chats", chatId, "members", userId));
-
-  try {
-    await sendSystemMessage(chatId, "user_removed", removedBy, [userId]);
-  } catch (err) {
-    console.error("Non-critical: failed to send removal system message", err);
-  }
 }
 
 export async function leaveChat(
@@ -494,6 +529,10 @@ export async function leaveChat(
 ): Promise<void> {
   if (!chatId || !userId) throw new Error("Invalid parameters");
 
+  if (isGroup) {
+    await sendSystemMessage(chatId, "user_left", userId);
+  }
+
   await Promise.all([
     updateDoc(doc(db, "chats", chatId), {
       participants: arrayRemove(userId),
@@ -501,10 +540,6 @@ export async function leaveChat(
     }),
     deleteDoc(doc(db, "chats", chatId, "members", userId)),
   ]);
-
-  if (isGroup) {
-    await sendSystemMessage(chatId, "user_left", userId);
-  }
 }
 
 export async function clearChatHistoryForMe(

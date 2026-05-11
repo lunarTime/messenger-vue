@@ -492,15 +492,9 @@ onUnmounted(() => {
       class="flex items-center justify-center h-full text-center p-8"
     >
       <div>
-        <i
-          class="pi pi-inbox text-6xl text-surface-400 dark:text-surface-600 mb-4 block"
-        ></i>
-        <p class="text-lg font-medium text-surface-700 dark:text-surface-300">
-          Нет сообщений
-        </p>
-        <p class="text-sm text-surface-500 dark:text-surface-400 mt-2">
-          Начните общение первым
-        </p>
+        <i class="pi pi-inbox text-6xl mb-4 block"></i>
+        <p class="text-lg font-medium">Нет сообщений</p>
+        <p class="text-sm mt-2">Начните общение первым</p>
       </div>
     </div>
 

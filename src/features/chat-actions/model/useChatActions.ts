@@ -8,6 +8,7 @@ import {
   leaveChat,
   setChatPinned,
   removeGroupMember,
+  setMemberRole,
 } from "@/shared/api/firebase/firestore";
 
 export function useChatActions() {
@@ -140,6 +141,51 @@ export function useChatActions() {
     });
   };
 
+  const promoteMember = async (chatId: string, userId: string) => {
+    const myId = requireMyId();
+
+    confirm.require({
+      header: "Назначить администратором",
+      message: "Назначить этого участника администратором группы?",
+      icon: "pi pi-shield",
+      rejectLabel: "Отмена",
+      acceptLabel: "Назначить",
+      accept: async () => {
+        await setMemberRole(chatId, userId, "admin", myId);
+
+        toast.add({
+          severity: "success",
+          summary: "Готово",
+          detail: "Участник назначен администратором",
+          life: 2500,
+        });
+      },
+    });
+  };
+
+  const demoteMember = async (chatId: string, userId: string) => {
+    const myId = requireMyId();
+
+    confirm.require({
+      header: "Снять права администратора",
+      message: "Снять права администратора у этого участника?",
+      icon: "pi pi-shield",
+      rejectLabel: "Отмена",
+      acceptLabel: "Снять",
+      acceptClass: "p-button-danger",
+      accept: async () => {
+        await setMemberRole(chatId, userId, "member", myId);
+
+        toast.add({
+          severity: "success",
+          summary: "Готово",
+          detail: "Права администратора сняты",
+          life: 2500,
+        });
+      },
+    });
+  };
+
   const deleteGroup = async (chatId: string) => {
     requireMyId();
 
@@ -151,11 +197,12 @@ export function useChatActions() {
       acceptLabel: "Удалить",
       acceptClass: "p-button-danger",
       accept: async () => {
-        const { deleteGroupChat } = await import(
-          "@/shared/api/firebase/firestore"
-        );
+        const { deleteGroupChat } =
+          await import("@/shared/api/firebase/firestore");
         await deleteGroupChat(chatId);
+
         chatStore.closeActiveChat();
+
         toast.add({
           severity: "success",
           summary: "Готово",
@@ -173,6 +220,8 @@ export function useChatActions() {
     clearHistoryForAll,
     leaveGroup,
     removeMember,
+    promoteMember,
+    demoteMember,
     deleteGroup,
   };
 }

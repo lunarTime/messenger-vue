@@ -11,7 +11,13 @@ export default defineConfig(({ mode }) => {
   return {
     base: env.VITE_BASE_URL || "/",
     plugins: [
-      vue(),
+      vue({
+        template: {
+          compilerOptions: {
+            comments: false,
+          },
+        },
+      }),
       tailwindcss(),
       Components({
         resolvers: [PrimeVueResolver()],

@@ -19,18 +19,29 @@ const systemText = computed(() => {
 
   const isMe = data.actorId === userStore.userId;
   const actor = chatStore.chatParticipants.get(data.actorId);
-  const actorName = isMe ? "Вы" : actor?.displayName || "Кто-то";
+  const actorName = isMe
+    ? "Вы"
+    : actor?.displayName || data.actorName || "Кто-то";
 
   const getTargetNames = () => {
     if (!data.targetUserIds || data.targetUserIds.length === 0)
       return "участника";
+
     return data.targetUserIds
-      .map((id) => {
+      .map((id, i) => {
         if (id === userStore.userId) return "вас";
-        return chatStore.chatParticipants.get(id)?.displayName || "Участника";
+
+        return (
+          chatStore.chatParticipants.get(id)?.displayName ||
+          data.targetUserNames?.[i] ||
+          "Участника"
+        );
       })
       .join(", ");
   };
+
+  const isTargetMe =
+    data.targetUserIds?.includes(userStore.userId ?? "") ?? false;
 
   switch (data.eventType) {
     case "chat_created":
@@ -39,8 +50,10 @@ const systemText = computed(() => {
         : `${actorName} создал(а) группу${data.newValue ? ` "${data.newValue}"` : ""}`;
     case "user_added":
       return isMe
-        ? `Вы добавили участника ${getTargetNames()}`
-        : `${actorName} добавил(а) участника ${getTargetNames()}`;
+        ? `Вы добавили ${getTargetNames()}`
+        : isTargetMe
+          ? `${actorName} добавил(а) вас в группу`
+          : `${actorName} добавил(а) ${getTargetNames()}`;
     case "user_joined":
       return isMe
         ? `Вы присоединились к группе`
@@ -48,9 +61,23 @@ const systemText = computed(() => {
     case "user_left":
       return isMe ? `Вы покинули группу` : `${actorName} покинул(а) группу`;
     case "user_removed":
-      return isMe
-        ? `Вы исключили участника ${getTargetNames()}`
-        : `${actorName} исключил(а) участника ${getTargetNames()}`;
+      return isTargetMe
+        ? `${actorName} исключил(а) вас из группы`
+        : isMe
+          ? `Вы исключили ${getTargetNames()}`
+          : `${actorName} исключил(а) ${getTargetNames()}`;
+    case "user_promoted_to_admin":
+      return isTargetMe
+        ? `${actorName} назначил(а) вас администратором`
+        : isMe
+          ? `Вы назначили ${getTargetNames()} администратором`
+          : `${actorName} назначил(а) ${getTargetNames()} администратором`;
+    case "user_demoted_from_admin":
+      return isTargetMe
+        ? `${actorName} снял(а) с вас права администратора`
+        : isMe
+          ? `Вы сняли права администратора у ${getTargetNames()}`
+          : `${actorName} снял(а) права администратора у ${getTargetNames()}`;
     case "chat_name_changed":
       return isMe
         ? `Вы изменили название группы на "${data.newValue}"`
@@ -66,6 +93,7 @@ const systemText = computed(() => {
 
 const time = computed(() => {
   if (!props.message.createdAt) return "";
+
   return formatTime(props.message.createdAt);
 });
 </script>

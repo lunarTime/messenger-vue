@@ -86,7 +86,9 @@ export type SystemMessageEventType =
 export interface SystemMessageData {
   eventType: SystemMessageEventType;
   actorId: string;
+  actorName?: string;
   targetUserIds?: string[];
+  targetUserNames?: string[];
   oldValue?: string;
   newValue?: string;
   metadata?: Record<string, unknown>;

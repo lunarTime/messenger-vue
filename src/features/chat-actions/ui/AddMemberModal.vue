@@ -104,7 +104,7 @@ const close = () => {
         </div>
 
         <ScrollPanel
-          class="h-80 border border-(--p-inputtext-border-color) rounded-xl bg-surface-50 dark:bg-surface-900/50"
+          class="h-80 border border-(--p-inputtext-border-color) rounded-xl"
         >
           <div
             v-if="availableUsers.length === 0"
@@ -116,7 +116,7 @@ const close = () => {
             <div
               v-for="user in availableUsers"
               :key="user.id"
-              class="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+              class="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors"
               @click="toggleUser(user.id)"
             >
               <Checkbox
