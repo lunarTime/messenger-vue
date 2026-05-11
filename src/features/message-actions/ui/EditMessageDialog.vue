@@ -476,13 +476,7 @@ function onCancel() {
               v-else
               class="flex h-22! w-22! rounded-lg flex-col items-center justify-center gap-1 relative overflow-hidden"
             >
-              <i
-                :class="[
-                  'pi',
-                  getFileIcon(pf.file.type),
-                  'text-xl text-surface-500',
-                ]"
-              />
+              <i :class="['pi', getFileIcon(pf.file.type), 'text-xl']" />
               <div class="flex justify-between self-start text-[0.7rem]">
                 <span class="line-clamp-2 text-center">
                   {{ pf.file.name }}
@@ -532,7 +526,7 @@ function onCancel() {
           <button
             v-if="canAddMore"
             type="button"
-            class="flex-none w-22 h-22 rounded-lg border-2 border-dashed border-surface-300 dark:border-surface-600 flex flex-col items-center justify-center gap-1 text-surface-400 hover:border-(--p-primary-color) hover:text-(--p-primary-color) transition-colors cursor-pointer"
+            class="flex-none w-22 h-22 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 hover:border-(--p-primary-color) hover:text-(--p-primary-color) transition-colors cursor-pointer"
             @click="openFilePicker"
           >
             <i class="pi pi-plus text-lg" />
