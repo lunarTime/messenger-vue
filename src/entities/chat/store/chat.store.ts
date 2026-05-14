@@ -180,7 +180,9 @@ export const useChatStore = defineStore("chat", () => {
         if (!memberMetaSubscriptions.value.has(chat.id)) {
           const unsub = subscribeToChatMemberMeta(chat.id, myIdVal, (meta) => {
             pinnedMap.value.set(chat.id, meta.isPinned);
-            roleMap.value.set(chat.id, meta.role);
+
+            if (meta.exists) roleMap.value.set(chat.id, meta.role);
+
             unreadCounts.value.set(chat.id, meta.unreadCount);
 
             if (typeof meta.pinnedOrder === "number") {
