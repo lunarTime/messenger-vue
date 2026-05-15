@@ -1,6 +1,5 @@
 import {
   collection,
-  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -23,13 +22,13 @@ import {
   type DocumentSnapshot,
   arrayUnion,
   increment,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "./index";
 import type { Chat, ChatMemberRole } from "@/shared/types/chat";
 import type {
   Message,
   MessageAttachment,
-  MessageStatus,
   SystemMessageEventType,
   SystemMessageData,
   SendMessageOptions,
@@ -129,6 +128,22 @@ export async function setUserOnlineStatus(
       lastSeen: serverTimestamp(),
     });
   } catch {}
+}
+
+export async function setChatMuted(
+  userId: string,
+  chatId: string,
+  isMuted: boolean,
+): Promise<void> {
+  if (!userId || !chatId) throw new Error("Invalid parameters");
+
+  await setDoc(
+    doc(db, "users", userId),
+    {
+      mutedChats: isMuted ? arrayUnion(chatId) : arrayRemove(chatId),
+    },
+    { merge: true },
+  );
 }
 
 export async function getOrCreateDirectChat(
@@ -333,9 +348,11 @@ export async function deleteGroupChat(chatId: string): Promise<void> {
 }
 
 export interface ChatMemberMeta {
+  exists: boolean;
   isPinned: boolean;
   pinnedOrder: number | null;
   clearedAt: Timestamp | null;
+  hiddenAt: Timestamp | null;
   role: ChatMemberRole;
   unreadCount: number;
 }
@@ -347,9 +364,11 @@ export function subscribeToChatMemberMeta(
 ): Unsubscribe {
   if (!chatId || !userId) {
     callback({
+      exists: false,
       isPinned: false,
       pinnedOrder: null,
       clearedAt: null,
+      hiddenAt: null,
       role: "member",
       unreadCount: 0,
     });
@@ -363,9 +382,11 @@ export function subscribeToChatMemberMeta(
     (snap) => {
       if (!snap.exists()) {
         callback({
+          exists: false,
           isPinned: false,
           pinnedOrder: null,
           clearedAt: null,
+          hiddenAt: null,
           role: "member",
           unreadCount: 0,
         });
@@ -375,21 +396,25 @@ export function subscribeToChatMemberMeta(
       const data = snap.data() as any;
 
       callback({
+        exists: true,
         isPinned: Boolean(data.isPinned),
         pinnedOrder:
           typeof data.pinnedOrder === "number"
             ? (data.pinnedOrder as number)
             : null,
         clearedAt: (data.clearedAt as Timestamp) || null,
+        hiddenAt: (data.hiddenAt as Timestamp) || null,
         role: (data.role as ChatMemberRole) || "member",
         unreadCount: (data.unreadCount as number) || 0,
       });
     },
     () =>
       callback({
+        exists: false,
         isPinned: false,
         pinnedOrder: null,
         clearedAt: null,
+        hiddenAt: null,
         role: "member",
         unreadCount: 0,
       }),
@@ -531,15 +556,27 @@ export async function leaveChat(
 
   if (isGroup) {
     await sendSystemMessage(chatId, "user_left", userId);
+
+    await Promise.all([
+      updateDoc(doc(db, "chats", chatId), {
+        participants: arrayRemove(userId),
+        updatedAt: serverTimestamp(),
+      }),
+      deleteDoc(doc(db, "chats", chatId, "members", userId)),
+    ]);
+    return;
   }
 
-  await Promise.all([
-    updateDoc(doc(db, "chats", chatId), {
-      participants: arrayRemove(userId),
-      updatedAt: serverTimestamp(),
-    }),
-    deleteDoc(doc(db, "chats", chatId, "members", userId)),
-  ]);
+  await setDoc(
+    doc(db, "chats", chatId, "members", userId),
+    {
+      userId,
+      hiddenAt: serverTimestamp(),
+      clearedAt: serverTimestamp(),
+      unreadCount: 0,
+    },
+    { merge: true },
+  );
 }
 
 export async function clearChatHistoryForMe(
@@ -559,22 +596,75 @@ export async function clearChatHistoryForMe(
   );
 }
 
+async function recomputeChatLastMessage(chatId: string): Promise<void> {
+  const recentQuery = query(
+    collection(db, "chats", chatId, "messages"),
+    orderBy("createdAt", "desc"),
+    limit(50),
+  );
+  const snapshot = await getDocs(recentQuery);
+
+  const lastAlive = snapshot.docs.find((d) => !d.data().isDeleted);
+
+  if (!lastAlive) {
+    await updateDoc(doc(db, "chats", chatId), {
+      lastMessage: null,
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+
+  const data = lastAlive.data();
+  const isSystem = data.type === "system";
+  const text = isSystem
+    ? "Системное сообщение"
+    : formatLastMessageText(
+        (data.text as string) ?? "",
+        data.attachments as MessageAttachment[] | undefined,
+      );
+
+  await updateDoc(doc(db, "chats", chatId), {
+    lastMessage: {
+      id: lastAlive.id,
+      text,
+      senderId: data.senderId,
+      createdAt: data.createdAt,
+    },
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export async function clearChatHistoryForAll(
   chatId: string,
   userId: string,
 ): Promise<void> {
   if (!chatId || !userId) throw new Error("Invalid parameters");
 
-  await updateDoc(doc(db, "chats", chatId), {
-    clearedAtForAll: serverTimestamp(),
-    lastMessage: {
-      text: "",
-      senderId: "",
-      createdAt: serverTimestamp(),
-    },
-    updatedAt: serverTimestamp(),
-    clearedBy: userId,
-  });
+  const myMessagesQuery = query(
+    collection(db, "chats", chatId, "messages"),
+    where("senderId", "==", userId),
+  );
+  const snapshot = await getDocs(myMessagesQuery);
+  const aliveDocs = snapshot.docs.filter((d) => !d.data().isDeleted);
+
+  const CHUNK = 400;
+
+  for (let i = 0; i < aliveDocs.length; i += CHUNK) {
+    const batch = writeBatch(db);
+
+    for (const docSnap of aliveDocs.slice(i, i + CHUNK)) {
+      batch.update(docSnap.ref, {
+        isDeleted: true,
+        text: "Сообщение удалено",
+        deletedAt: serverTimestamp(),
+        deletedBy: userId,
+      });
+    }
+
+    await batch.commit();
+  }
+
+  await recomputeChatLastMessage(chatId);
 }
 
 export function subscribeToUserChats(
@@ -675,10 +765,7 @@ export async function sendMessage(
     const tasks = participants
       .filter((participantId) => participantId !== senderId)
       .map((participantId) =>
-        Promise.all([
-          setMessageDeliveryStatus(messageId, chatId, participantId, "sent"),
-          incrementUnreadCount(chatId, participantId),
-        ]).catch((err) => {
+        incrementUnreadCount(chatId, participantId).catch((err) => {
           console.error(`Failed to notify participant ${participantId}:`, err);
         }),
       );
@@ -796,6 +883,7 @@ export function subscribeToChatMessages(
   chatId: string,
   callback: (result: ChatMessagesResult) => void,
   currentUserId?: string,
+  clearedAtMillis?: number | null,
 ): Unsubscribe {
   if (!chatId) {
     callback({ messages: [], oldestCursor: null, hasMore: false });
@@ -814,35 +902,26 @@ export function subscribeToChatMessages(
         docs.length > 0 ? docs[docs.length - 1]! : null;
       const hasMore = docs.length === 50;
 
-      if (!currentUserId) {
-        callback({ messages, oldestCursor, hasMore });
-
-        return;
-      }
-
       const docDataMap = new Map(docs.map((d) => [d.id, d.data()]));
       const filtered = messages.filter((msg) => {
+        if (msg.isDeleted) return false;
+
+        if (
+          clearedAtMillis &&
+          msg.createdAt &&
+          msg.createdAt.toMillis() <= clearedAtMillis
+        ) {
+          return false;
+        }
+
+        if (!currentUserId) return true;
+
         const data = docDataMap.get(msg.id);
 
         if (!data) return true;
 
         const deletedForArray: string[] = data.deletedFor ?? [];
-
         return !deletedForArray.includes(currentUserId);
-      });
-
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          const senderId = change.doc.data().senderId as string;
-          if (senderId && senderId !== currentUserId) {
-            setMessageDeliveryStatus(
-              change.doc.id,
-              chatId,
-              currentUserId,
-              "delivered",
-            );
-          }
-        }
       });
 
       callback({ messages: filtered, oldestCursor, hasMore });
@@ -857,6 +936,7 @@ export async function loadOlderMessages(
   chatId: string,
   cursor: DocumentSnapshot,
   currentUserId?: string,
+  clearedAtMillis?: number | null,
 ): Promise<{ messages: Message[]; nextCursor: DocumentSnapshot | null }> {
   const messagesRef = collection(db, "chats", chatId, "messages");
   const q = query(
@@ -869,17 +949,25 @@ export async function loadOlderMessages(
 
   let messages = snapshot.docs.map((d) => parseMessageDoc(d, chatId)).reverse();
 
-  if (currentUserId) {
-    messages = messages.filter((msg) => {
-      const data = snapshot.docs.find((d) => d.id === msg.id)?.data();
+  messages = messages.filter((msg) => {
+    if (msg.isDeleted) return false;
 
-      if (!data) return true;
+    if (
+      clearedAtMillis &&
+      msg.createdAt &&
+      msg.createdAt.toMillis() <= clearedAtMillis
+    ) {
+      return false;
+    }
 
-      const deletedForArray: string[] = data.deletedFor ?? [];
+    if (!currentUserId) return true;
 
-      return !deletedForArray.includes(currentUserId);
-    });
-  }
+    const data = snapshot.docs.find((d) => d.id === msg.id)?.data();
+    if (!data) return true;
+
+    const deletedForArray: string[] = data.deletedFor ?? [];
+    return !deletedForArray.includes(currentUserId);
+  });
 
   const nextCursor =
     snapshot.docs.length === 50
@@ -1108,108 +1196,29 @@ export function subscribeToUnreadCount(
   };
 }
 
-export async function setMessageDeliveryStatus(
-  messageId: string,
+export function subscribeToChatReadStates(
   chatId: string,
-  userId: string,
-  status: MessageStatus,
-): Promise<void> {
-  if (!messageId || !chatId || !userId) return;
-
-  try {
-    const statusRef = doc(
-      db,
-      "chats",
-      chatId,
-      "messages",
-      messageId,
-      "deliveryStatus",
-      userId,
-    );
-    const statusData: Record<string, string | Timestamp> = {
-      messageId,
-      chatId,
-      userId,
-      status,
-    };
-
-    if (status === "delivered") {
-      statusData.deliveredAt = serverTimestamp() as Timestamp;
-    } else if (status === "read") {
-      statusData.readAt = serverTimestamp() as Timestamp;
-      statusData.deliveredAt = serverTimestamp() as Timestamp;
-    }
-
-    await setDoc(statusRef, statusData, { merge: true });
-  } catch {}
-}
-
-export function subscribeToMessageDeliveryStatus(
-  messageId: string,
-  chatId: string,
-  userId: string,
-  callback: (status: MessageStatus | null) => void,
+  callback: (lastReadByUser: Map<string, Timestamp>) => void,
 ): Unsubscribe {
-  if (!messageId || !chatId || !userId) {
-    callback(null);
+  if (!chatId) {
+    callback(new Map());
+
     return () => {};
   }
 
-  const statusRef = doc(
-    db,
-    "chats",
-    chatId,
-    "messages",
-    messageId,
-    "deliveryStatus",
-    userId,
-  );
-
   return onSnapshot(
-    statusRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        callback((data.status || "sent") as MessageStatus);
-      } else {
-        callback(null);
-      }
-    },
-    () => {
-      callback(null);
-    },
-  );
-}
-
-export function subscribeToDeliveryStatuses(
-  chatId: string,
-  userId: string,
-  callback: (statuses: Map<string, MessageStatus>) => void,
-): Unsubscribe {
-  if (!chatId || !userId) return () => {};
-
-  const q = query(
-    collectionGroup(db, "deliveryStatus"),
-    where("chatId", "==", chatId),
-    where("userId", "==", userId),
-  );
-
-  return onSnapshot(
-    q,
+    collection(db, "chats", chatId, "members"),
     (snap) => {
-      const result = new Map<string, MessageStatus>();
-
+      const result = new Map<string, Timestamp>();
       snap.docs.forEach((d) => {
         const data = d.data();
+        const lastReadAt = data.lastReadAt as Timestamp | undefined;
 
-        if (data.messageId && data.status) {
-          result.set(data.messageId as string, data.status as MessageStatus);
-        }
+        if (lastReadAt) result.set(d.id, lastReadAt);
       });
-
       callback(result);
     },
-    () => {},
+    () => callback(new Map()),
   );
 }
 
@@ -1317,15 +1326,16 @@ export async function deleteMessageForAll(
     });
 
     const chatDoc = await getDoc(doc(db, "chats", chatId));
-    if (chatDoc.exists()) {
-      const chatData = chatDoc.data() as Chat;
-      if (chatData.lastMessage?.senderId === userId) {
-        await updateDoc(doc(db, "chats", chatId), {
-          "lastMessage.text": "Сообщение удалено",
-          updatedAt: serverTimestamp(),
-        });
-      }
-    }
+    if (!chatDoc.exists()) return;
+
+    const chatData = chatDoc.data() as Chat;
+    const wasLastMessage =
+      (chatData.lastMessage as { id?: string } | null | undefined)?.id ===
+      messageId;
+
+    if (!wasLastMessage) return;
+
+    await recomputeChatLastMessage(chatId);
   } catch (error) {
     throw error;
   }
@@ -1400,11 +1410,6 @@ export async function sendMessagesBatch(
       },
       updatedAt: serverTimestamp(),
     }),
-    ...messageRefs.flatMap((ref) =>
-      otherParticipants.map((participantId) =>
-        setMessageDeliveryStatus(ref.id, chatId, participantId, "sent"),
-      ),
-    ),
     ...otherParticipants.map((participantId) =>
       incrementUnreadCount(chatId, participantId),
     ),

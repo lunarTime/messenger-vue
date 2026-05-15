@@ -14,6 +14,7 @@ const menuRef = ref();
 const chatStore = useChatStore();
 const {
   togglePin,
+  toggleMute,
   deleteChat,
   clearHistoryForMe,
   clearHistoryForAll,
@@ -25,12 +26,19 @@ const chat = computed(() => chatStore.chats.find((c) => c.id === props.chatId));
 
 const isOwner = computed(() => chatStore.isChatOwner(props.chatId));
 
+const isMuted = computed(() => chatStore.isChatMuted(props.chatId));
+
 const items = computed<MenuItem[]>(() => {
-  const common = [
+  const common: MenuItem[] = [
     {
       label: props.isPinned ? "Открепить" : "Закрепить сверху",
       icon: props.isPinned ? "pi pi-bookmark-fill" : "pi pi-bookmark",
       command: () => togglePin(props.chatId, props.isPinned),
+    },
+    {
+      label: isMuted.value ? "Включить уведомления" : "Отключить уведомления",
+      icon: isMuted.value ? "pi pi-bell" : "pi pi-bell-slash",
+      command: () => toggleMute(props.chatId),
     },
     { separator: true },
   ];
@@ -65,7 +73,7 @@ const items = computed<MenuItem[]>(() => {
       command: () => clearHistoryForMe(props.chatId),
     },
     {
-      label: "Очистить историю у всех",
+      label: "Удалить мои сообщения у всех",
       icon: "pi pi-eraser",
       severity: "danger",
       command: () => clearHistoryForAll(props.chatId),

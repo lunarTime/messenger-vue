@@ -54,9 +54,11 @@ const handleForward = () => {
   if (msgs.length === 1) {
     const msg = msgs[0]!;
 
-    let senderName = "Вы";
+    let senderName: string;
 
-    if (msg.senderId !== userStore.userId) {
+    if (msg.senderId === userStore.userId) {
+      senderName = userStore.currentUser?.displayName || "Пользователь";
+    } else {
       const participant = chatStore.chatParticipants.get(msg.senderId);
 
       senderName = participant?.displayName || "Пользователь";

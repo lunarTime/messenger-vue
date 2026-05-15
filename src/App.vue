@@ -1,13 +1,31 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import { RouterView } from "vue-router";
 import { useTheme } from "@/shared/composables/useTheme";
 import { useUserPresence } from "@/entities/user/model/useUserPresence";
+import { useTitleNotifier } from "@/shared/composables/useTitleNotifier";
+import { ensureNotificationPermission } from "@/shared/composables/useBrowserNotifications";
 import AnimateBG from "@/shared/ui/AnimateBG.vue";
 import ConfirmPopup from "primevue/confirmpopup";
 import Toast from "primevue/toast";
 
 useTheme();
 useUserPresence();
+useTitleNotifier();
+
+onMounted(() => {
+  void ensureNotificationPermission();
+
+  const requestOnGesture = () => {
+    void ensureNotificationPermission();
+
+    window.removeEventListener("pointerdown", requestOnGesture);
+    window.removeEventListener("keydown", requestOnGesture);
+  };
+
+  window.addEventListener("pointerdown", requestOnGesture, { once: true });
+  window.addEventListener("keydown", requestOnGesture, { once: true });
+});
 </script>
 
 <template>

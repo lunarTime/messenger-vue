@@ -65,6 +65,7 @@ export interface MessageViewModel extends Omit<
     senderName: string;
     senderId: string;
     hasAttachments: boolean;
+    attachmentCount?: number;
   };
 
   readByCount?: number;
@@ -104,6 +105,7 @@ export interface ReplyContext {
   messageId: string;
   senderName: string;
   text: string;
+  attachmentCount?: number;
 }
 
 export interface ForwardContext {

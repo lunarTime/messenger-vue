@@ -260,7 +260,11 @@ onUnmounted(() => {
       title: { class: 'md:text-2xl! text-lg! leading-none!' },
     }"
   >
-    <GroupChatInfo v-if="chat?.id" :chat-id="chat.id" />
+    <GroupChatInfo
+      v-if="chat?.id"
+      :chat-id="chat.id"
+      @close="isInfoVisible = false"
+    />
   </Drawer>
 
   <Drawer
@@ -278,6 +282,11 @@ onUnmounted(() => {
       @open-chat="
         chatStore.selectChat($event);
         isUserViewVisible = false;
+      "
+      @write-directly="
+        otherUserId && chatStore.openChatWith(otherUserId);
+        isUserViewVisible = false;
+        isInfoVisible = false;
       "
     />
   </Drawer>

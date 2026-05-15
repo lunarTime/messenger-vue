@@ -24,9 +24,14 @@ const props = defineProps<{
   chatId: string;
 }>();
 
+const emit = defineEmits<{ close: [] }>();
+
 const chatStore = useChatStore();
 const userStore = useUserStore();
-const { removeMember, promoteMember, demoteMember } = useChatActions();
+const { removeMember, promoteMember, demoteMember, toggleMute } =
+  useChatActions();
+
+const isMuted = computed(() => chatStore.isChatMuted(props.chatId));
 const now = useGlobalNow(30000);
 
 const members = ref<{ userId: string; role: ChatMemberRole }[]>([]);
@@ -166,13 +171,22 @@ onUnmounted(() => {
         <p class="text-sm opacity-70 mt-1">{{ members.length }} участников</p>
       </div>
 
-      <div v-if="isAdmin" class="mt-2">
+      <div class="mt-2 flex items-center gap-2">
         <Button
+          v-if="isAdmin"
           label="Добавить участников"
           icon="pi pi-user-plus"
           rounded
           size="small"
           @click="showAddModal = true"
+        />
+        <Button
+          :label="isMuted ? 'Включить уведомления' : 'Отключить уведомления'"
+          :icon="isMuted ? 'pi pi-bell' : 'pi pi-bell-slash'"
+          severity="secondary"
+          rounded
+          size="small"
+          @click="toggleMute(chatId)"
         />
       </div>
     </div>
@@ -342,6 +356,11 @@ onUnmounted(() => {
       @open-chat="
         chatStore.selectChat($event);
         viewingUserId = null;
+      "
+      @write-directly="
+        viewingUserId && chatStore.openChatWith(viewingUserId);
+        viewingUserId = null;
+        emit('close');
       "
     />
   </Drawer>

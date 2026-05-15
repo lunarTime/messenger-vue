@@ -27,7 +27,6 @@ import Skeleton from "primevue/skeleton";
 import Button from "primevue/button";
 import Avatar from "primevue/avatar";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
-import { markChatAsRead } from "@/shared/api/firebase/firestore";
 import { useMessageQueue } from "@/features/send-message/model/useMessageQueue";
 
 const confirm = useConfirm();
@@ -46,7 +45,7 @@ const messageCompose = useMessageCompose();
 const handleReply = (messageId: string) => {
   const msg = messageStore.messages.find((m) => m.id === messageId);
 
-  if (!msg || msg.isDeleted) return;
+  if (!msg) return;
 
   let senderName = "Вы";
 
@@ -59,7 +58,22 @@ const handleReply = (messageId: string) => {
   messageCompose.setReply({
     messageId,
     senderName,
-    text: msg.text,
+    text: msg.isDeleted ? "" : msg.text,
+    attachmentCount: msg.attachments?.length || 0,
+  });
+};
+
+const handleCopy = async (messageId: string) => {
+  const msg = messageStore.messages.find((m) => m.id === messageId);
+
+  if (!msg || !msg.text) return;
+
+  await navigator.clipboard.writeText(msg.text);
+
+  toast.add({
+    severity: "success",
+    summary: "Скопировано",
+    life: 1500,
   });
 };
 
@@ -68,9 +82,11 @@ const handleForward = (messageId: string) => {
 
   if (!msg || msg.isDeleted) return;
 
-  let senderName = "Вы";
+  let senderName: string;
 
-  if (msg.senderId !== userStore.userId) {
+  if (msg.senderId === userStore.userId) {
+    senderName = userStore.currentUser?.displayName || "Пользователь";
+  } else {
     const participant = chatStore.chatParticipants.get(msg.senderId);
 
     senderName = participant?.displayName || "Пользователь";
@@ -102,6 +118,21 @@ const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 
 provide("chatScrollContainer", containerRef);
 
+const scrollToMessage = (messageId: string) => {
+  const el = containerRef.value?.querySelector(
+    `[data-message-id="${messageId}"]`,
+  );
+
+  if (!el) return;
+
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("bg-(--p-primary-color)/30");
+
+  setTimeout(() => el.classList.remove("bg-(--p-primary-color)/30"), 1500);
+};
+
+provide("scrollToMessage", scrollToMessage);
+
 let closeCurrentMenu: (() => void) | null = null;
 
 provide("registerOpenMenu", (hide: () => void) => {
@@ -109,7 +140,9 @@ provide("registerOpenMenu", (hide: () => void) => {
   closeCurrentMenu = hide;
 });
 
-let isDragSelecting = false;
+const isDragSelecting = ref(false);
+
+let isTextSelection = false;
 let dragStartMessageId: string | null = null;
 let dragStartX = 0;
 let dragStartY = 0;
@@ -138,7 +171,17 @@ const getMessageIdsBetween = (idA: string, idB: string): string[] => {
 const onMouseDown = (e: MouseEvent) => {
   if (e.button !== 0) return;
 
-  const msgId = getMessageIdFromElement(e.target as Element);
+  isTextSelection = false;
+
+  const target = e.target as Element;
+
+  if (target.closest(".chat-bubble-text")) {
+    isTextSelection = true;
+
+    return;
+  }
+
+  const msgId = getMessageIdFromElement(target);
 
   if (!msgId) return;
 
@@ -148,31 +191,38 @@ const onMouseDown = (e: MouseEvent) => {
 
   if (msg?.isDeleted) return;
 
-  isDragSelecting = false;
+  isDragSelecting.value = false;
   dragStartMessageId = msgId;
   dragStartX = e.clientX;
   dragStartY = e.clientY;
 };
 
 const onMouseMove = (e: MouseEvent) => {
+  if (isTextSelection) return;
+
   if (!dragStartMessageId || e.buttons !== 1) return;
 
   const dx = Math.abs(e.clientX - dragStartX);
   const dy = Math.abs(e.clientY - dragStartY);
 
-  if (!isDragSelecting && dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD)
+  if (
+    !isDragSelecting.value &&
+    dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD
+  )
     return;
 
   const msgId = getMessageIdFromElement(e.target as Element);
 
   if (!msgId) return;
 
-  if (!isDragSelecting) {
-    isDragSelecting = true;
+  if (!isDragSelecting.value) {
+    isDragSelecting.value = true;
+
+    window.getSelection()?.removeAllRanges();
     selection.enter(dragStartMessageId);
   }
 
-  if (isDragSelecting) {
+  if (isDragSelecting.value) {
     const range = getMessageIdsBetween(dragStartMessageId, msgId);
 
     selection.addRange(range);
@@ -180,7 +230,8 @@ const onMouseMove = (e: MouseEvent) => {
 };
 
 const onMouseUp = () => {
-  isDragSelecting = false;
+  isDragSelecting.value = false;
+  isTextSelection = false;
   dragStartMessageId = null;
 };
 
@@ -276,9 +327,6 @@ watch(
     if (!newLastId) return;
     if (messageStore.isLoadingOlderMessages) return;
     if (newLastId === oldLastId) return;
-    if (chatStore.activeChatId && userStore.userId) {
-      markChatAsRead(chatStore.activeChatId, userStore.userId);
-    }
 
     const isInitialLoad = oldLastId === null;
     const shouldScroll =
@@ -296,10 +344,6 @@ watch(
     if (!newChatId || newChatId === oldChatId) return;
 
     selection.exit();
-
-    if (userStore.userId) {
-      markChatAsRead(newChatId, userStore.userId);
-    }
 
     isUserScrolling.value = false;
     shouldScrollToBottom = true;
@@ -501,7 +545,8 @@ onUnmounted(() => {
     <div
       v-if="showContent"
       ref="containerRef"
-      class="h-full overflow-y-auto overflow-x-hidden pr-2 select-none"
+      class="h-full overflow-y-auto overflow-x-hidden pr-2"
+      :class="{ 'select-none': selection.isActive || isDragSelecting }"
       @mousedown="onMouseDown"
       @mousemove="onMouseMove"
       @mouseup="onMouseUp"
@@ -516,7 +561,7 @@ onUnmounted(() => {
         </div>
 
         <template v-for="dateGroup in groupedMessages" :key="dateGroup.date">
-          <div class="flex flex-col gap-2">
+          <div class="flex flex-col gap-1">
             <div
               class="sticky top-2 z-1 flex justify-center pointer-events-none"
             >
@@ -616,6 +661,7 @@ onUnmounted(() => {
                     @delete-for-all="handleDeleteForAll"
                     @reply="handleReply"
                     @forward="handleForward"
+                    @copy="handleCopy"
                   />
                 </div>
               </div>

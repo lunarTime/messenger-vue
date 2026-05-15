@@ -1,8 +1,8 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed } from "vue";
 import { formatTime } from "@/shared/utils/formatTime";
-import { PencilIcon, XCircleIcon } from "@heroicons/vue/24/solid";
-import type { MessageStatus, MessageAttachment } from "@/shared/types/message";
+import { PencilIcon } from "@heroicons/vue/24/solid";
+import type { MessageAttachment } from "@/shared/types/message";
 import type { Timestamp } from "firebase/firestore";
 import MessageAttachments from "@/shared/ui/MessageAttachments.vue";
 
@@ -12,18 +12,19 @@ const props = defineProps<{
   deleted?: boolean;
   createdAt: Timestamp | null;
   edited?: boolean;
-  deliveryStatus?: MessageStatus;
+  deliveryStatus?: "sent" | "read";
   senderName?: string;
   replyToText?: string;
   replyToSenderName?: string;
   forwardedFrom?: string;
   attachments?: MessageAttachment[];
+  onReplyClick?: () => void;
 }>();
 
 const isOutgoing = computed(() => props.variant === "outgoing");
 
 const bubbleClasses = computed(() => [
-  "md:px-3 px-2 pb-1 pt-3 md:max-w-140 max-w-120 rounded-2xl shadow-sm break-all",
+  "md:px-3 px-2 pb-1 pt-3 md:max-w-140 max-w-[85%] rounded-2xl shadow-sm",
   isOutgoing.value
     ? "bg-(--p-primary-color)/70 rounded-br-sm"
     : "bg-(--p-primary-color)/20 rounded-bl-sm",
@@ -43,21 +44,18 @@ const timeDisplay = computed(() => {
 
 const showDeliveryStatus = computed(() => isOutgoing.value && !props.deleted);
 
-const deliveryIcon = computed(() => {
+const deliveryIcon = computed<"read" | "sent" | null>(() => {
   if (!showDeliveryStatus.value) return null;
-
-  if (props.deliveryStatus === "sending") return "sending";
-  if (props.deliveryStatus === "failed") return "failed";
-  if (props.deliveryStatus === "read") return "read";
-  if (props.deliveryStatus === "delivered") return "delivered";
-  return "sent";
+  return props.deliveryStatus === "read" ? "read" : "sent";
 });
 </script>
 
 <template>
   <div :class="bubbleClasses">
     <template v-if="!deleted">
-      <div class="flex flex-col gap-0.5 wrap-break-word whitespace-pre-wrap">
+      <div
+        class="flex flex-col gap-0.5 whitespace-pre-wrap min-w-0 md:select-auto select-none"
+      >
         <div
           v-if="senderName && !isOutgoing"
           class="text-xs font-bold text-(--p-primary-color) mb-0.5"
@@ -78,7 +76,16 @@ const deliveryIcon = computed(() => {
           </span>
         </div>
 
-        <div v-if="replyToText" :class="replyBarClasses">
+        <div
+          v-if="replyToText"
+          :class="[
+            replyBarClasses,
+            onReplyClick
+              ? 'cursor-pointer hover:opacity-80 transition-opacity'
+              : 'cursor-default',
+          ]"
+          @click.stop="onReplyClick?.()"
+        >
           <div
             v-if="replyToSenderName"
             class="text-xs font-semibold truncate"
@@ -98,7 +105,10 @@ const deliveryIcon = computed(() => {
           class="mb-1"
         />
 
-        <div v-if="text" class="md:text-base text-sm w-full">
+        <div
+          v-if="text"
+          class="chat-bubble-text md:text-base text-sm w-full hyphens-auto wrap-anywhere"
+        >
           {{ text }}
         </div>
 
@@ -110,28 +120,20 @@ const deliveryIcon = computed(() => {
           </span>
 
           <div v-if="deliveryIcon" class="flex items-center">
-            <i
-              v-if="deliveryIcon === 'sending'"
-              class="pi pi-clock opacity-70 text-[0.5rem]!"
-              title="Отправляется"
-            />
-
-            <XCircleIcon
-              v-else-if="deliveryIcon === 'failed'"
-              class="size-4 text-red-500"
-              title="Не отправлено"
-            />
-
             <div
-              v-else-if="deliveryIcon === 'read' || deliveryIcon === 'delivered'"
+              v-if="deliveryIcon === 'read'"
               class="flex space-x-[-4px]"
               title="Прочитано"
             >
-              <i class="pi pi-check opacity-70 text-[0.5rem]!" />
-              <i class="pi pi-check opacity-70 text-[0.5rem]!" />
+              <i class="pi pi-check text-[0.5rem]!" />
+              <i class="pi pi-check text-[0.5rem]!" />
             </div>
 
-            <i v-else class="pi pi-check opacity-70 text-[0.5rem]!" />
+            <i
+              v-else
+              class="pi pi-check opacity-70 text-[0.5rem]!"
+              title="Отправлено"
+            />
           </div>
         </div>
       </div>

@@ -13,6 +13,7 @@ export interface User {
     createdAt: Timestamp
     updatedAt: Timestamp
     fcmTokens?: string[]
+    mutedChats?: string[]
 }
 
 export interface UserUpdateData {
