@@ -8,6 +8,22 @@ import { PrimeVueResolver } from "@primevue/auto-import-resolver";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
+  const apiTarget = (() => {
+    const explicit = env.VITE_OTP_API_URL?.trim();
+
+    if (explicit) return explicit.replace(/\/+$/, "");
+
+    const ai = env.VITE_AI_API_URL?.trim();
+
+    if (ai) {
+      try {
+        return new URL(ai).origin;
+      } catch {}
+    }
+
+    return "";
+  })();
+
   return {
     base: env.VITE_BASE_URL || "/",
     plugins: [
@@ -40,6 +56,15 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
+      proxy: apiTarget
+        ? {
+            "/api": {
+              target: apiTarget,
+              changeOrigin: true,
+              secure: true,
+            },
+          }
+        : undefined,
     },
 
     build: {
