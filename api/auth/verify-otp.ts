@@ -1,14 +1,14 @@
 import bcrypt from "bcryptjs";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminAuth, adminDb } from "../_lib/firebase-admin";
-import { checkRateLimit } from "../_lib/rateLimit";
+import { adminAuth, adminDb } from "../_lib/firebase-admin.js";
+import { checkRateLimit } from "../_lib/rateLimit.js";
 import {
   applyCors,
   getClientIp,
   normalizeEmail,
   type HandlerReq,
   type HandlerRes,
-} from "../_lib/http";
+} from "../_lib/http.js";
 
 const MAX_ATTEMPTS = 5;
 const RATE_WINDOW_MS = 15 * 60 * 1000;

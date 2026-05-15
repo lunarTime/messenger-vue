@@ -1,4 +1,4 @@
-import { applyCors, type HandlerReq, type HandlerRes } from "./_lib/http";
+import { applyCors, type HandlerReq, type HandlerRes } from "./_lib/http.js";
 
 interface GigaChatAuthResponse {
   access_token: string;

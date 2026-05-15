@@ -1,14 +1,14 @@
 import bcrypt from "bcryptjs";
-import { adminAuth, adminDb } from "../_lib/firebase-admin";
-import { sendOtpEmail } from "../_lib/mailer";
+import { adminAuth, adminDb } from "../_lib/firebase-admin.js";
+import { sendOtpEmail } from "../_lib/mailer.js";
 import {
   applyCors,
   getClientIp,
   normalizeEmail,
   type HandlerReq,
   type HandlerRes,
-} from "../_lib/http";
-import { checkRateLimit } from "../_lib/rateLimit";
+} from "../_lib/http.js";
+import { checkRateLimit } from "../_lib/rateLimit.js";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { adminDb } from "./firebase-admin";
+import { adminDb } from "./firebase-admin.js";
 
 const COLLECTION = "rateLimits";
 
