@@ -6,13 +6,14 @@ import {
   getUserById,
   subscribeToUser,
   subscribeToChatMemberMeta,
-  subscribeToMessageDeliveryStatus,
+  subscribeToChatReadStates,
   setChatPinnedOrder,
 } from "@/shared/api/firebase/firestore";
-import type { Unsubscribe } from "firebase/firestore";
+import type { Timestamp, Unsubscribe } from "firebase/firestore";
 import type { Chat } from "@/shared/types/chat";
 import type { User } from "@/shared/types/user";
-import type { MessageStatus } from "@/shared/types/message";
+import { playIncomingMessageSound } from "@/shared/composables/useNotificationSound";
+import { showMessageNotification } from "@/shared/composables/useBrowserNotifications";
 
 type MillisLike = { toMillis: () => number };
 
@@ -54,11 +55,15 @@ export const useChatStore = defineStore("chat", () => {
   const temporaryChat = ref<TemporaryChat | null>(null);
   const memberMetaSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
   const lastStatusSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
-  const lastMessageStatuses = ref<Map<string, MessageStatus>>(new Map());
+  const lastMessageStatuses = ref<Map<string, "sent" | "read">>(new Map());
+  const chatReadStates = ref<Map<string, Map<string, Timestamp>>>(new Map());
   const unreadCounts = ref<Map<string, number>>(new Map());
   const pinnedMap = ref<Map<string, boolean>>(new Map());
   const pinnedOrderMap = ref<Map<string, number>>(new Map());
   const roleMap = ref<Map<string, string>>(new Map());
+  const hiddenAtMap = ref<Map<string, number>>(new Map());
+  const lastMessageMillisMap = ref<Map<string, number>>(new Map());
+  const hasInitialChatsSnapshot = ref(false);
 
   const myId = computed(() => userStore.userId);
 
@@ -71,7 +76,15 @@ export const useChatStore = defineStore("chat", () => {
   });
 
   const visibleChats = computed(() => {
-    const list = [...chats.value];
+    const list = chats.value.filter((c) => {
+      const hiddenAt = hiddenAtMap.value.get(c.id);
+
+      if (!hiddenAt) return true;
+
+      const updatedAtMs = toMillis(c.updatedAt);
+
+      return updatedAtMs > hiddenAt;
+    });
 
     list.sort((a, b) => {
       const aPinned = pinnedMap.value.get(a.id) ?? false;
@@ -95,48 +108,79 @@ export const useChatStore = defineStore("chat", () => {
     return list;
   });
 
+  const _setLastStatus = (chatId: string, status: "sent" | "read" | null) => {
+    const next = new Map(lastMessageStatuses.value);
+
+    if (status) next.set(chatId, status);
+    else next.delete(chatId);
+
+    lastMessageStatuses.value = next;
+  };
+
+  const _recomputeLastStatus = (chat: Chat) => {
+    const myIdVal = myId.value;
+    if (!myIdVal) return;
+
+    const lastMsg = chat.lastMessage;
+    const isOutgoing = lastMsg?.senderId === myIdVal;
+    const createdAt = lastMsg?.createdAt;
+
+    if (!isOutgoing || !createdAt) {
+      _setLastStatus(chat.id, null);
+
+      return;
+    }
+
+    const otherIds = chat.participants.filter((id) => id !== myIdVal);
+
+    if (otherIds.length === 0) {
+      _setLastStatus(chat.id, null);
+
+      return;
+    }
+
+    const states = chatReadStates.value.get(chat.id);
+    const createdMillis = createdAt.toMillis();
+    const someoneRead =
+      !!states &&
+      otherIds.some((uid) => {
+        const lastRead = states.get(uid);
+
+        return lastRead ? lastRead.toMillis() >= createdMillis : false;
+      });
+    const allRead =
+      !!states &&
+      otherIds.every((uid) => {
+        const lastRead = states.get(uid);
+
+        return lastRead ? lastRead.toMillis() >= createdMillis : false;
+      });
+
+    if (chat.type === "group") {
+      _setLastStatus(chat.id, someoneRead ? "read" : "sent");
+    } else {
+      _setLastStatus(chat.id, allRead ? "read" : "sent");
+    }
+  };
+
   const _refreshLastStatusSub = (chat: Chat) => {
     const myIdVal = myId.value;
 
     if (!myIdVal) return;
 
-    const lastMsg = chat.lastMessage;
-    const isOutgoing = lastMsg?.senderId === myIdVal;
+    if (!lastStatusSubscriptions.value.has(chat.id)) {
+      const unsub = subscribeToChatReadStates(chat.id, (map) => {
+        chatReadStates.value = new Map(chatReadStates.value).set(chat.id, map);
 
-    if (!isOutgoing || !lastMsg?.id) {
-      lastStatusSubscriptions.value.get(chat.id)?.();
-      lastStatusSubscriptions.value.delete(chat.id);
-      lastMessageStatuses.value.delete(chat.id);
+        const fresh = chats.value.find((c) => c.id === chat.id);
 
-      return;
+        if (fresh) _recomputeLastStatus(fresh);
+      });
+
+      lastStatusSubscriptions.value.set(chat.id, unsub);
     }
 
-    const otherUserId = chat.participants.find((id) => id !== myIdVal);
-
-    if (!otherUserId) return;
-
-    const key = `${chat.id}:${lastMsg.id}`;
-
-    if (lastStatusSubscriptions.value.has(key)) return;
-
-    for (const [k, unsub] of lastStatusSubscriptions.value.entries()) {
-      if (k.startsWith(`${chat.id}:`)) {
-        unsub();
-
-        lastStatusSubscriptions.value.delete(k);
-      }
-    }
-
-    const unsub = subscribeToMessageDeliveryStatus(
-      lastMsg.id,
-      chat.id,
-      otherUserId,
-      (status) => {
-        if (status) lastMessageStatuses.value.set(chat.id, status);
-        else lastMessageStatuses.value.delete(chat.id);
-      },
-    );
-    lastStatusSubscriptions.value.set(key, unsub);
+    _recomputeLastStatus(chat);
   };
 
   const loadChats = () => {
@@ -152,6 +196,70 @@ export const useChatStore = defineStore("chat", () => {
     isLoading.value = true;
 
     unsubscribeChats.value = subscribeToUserChats(myIdVal, (loadedChats) => {
+      if (hasInitialChatsSnapshot.value) {
+        for (const chat of loadedChats) {
+          const lastMsg = chat.lastMessage;
+          const createdAt = lastMsg?.createdAt;
+
+          if (!createdAt || !lastMsg?.senderId) continue;
+
+          const newMillis = toMillis(createdAt);
+
+          if (!newMillis) continue;
+
+          const prevMillis = lastMessageMillisMap.value.get(chat.id) ?? 0;
+
+          if (newMillis <= prevMillis) continue;
+
+          const isIncoming =
+            lastMsg.senderId !== myIdVal && lastMsg.senderId !== "system";
+          const isActive = activeChatId.value === chat.id;
+          const isMuted = mutedChats.value.has(chat.id);
+
+          if (!isIncoming || isMuted) continue;
+
+          const tabVisible =
+            typeof document !== "undefined" && !document.hidden;
+          const tabFocused =
+            typeof document !== "undefined" && document.hasFocus();
+
+          if (isActive && tabVisible && tabFocused) continue;
+
+          if (!tabVisible || !tabFocused) {
+            const sender = chatParticipants.value.get(lastMsg.senderId);
+            const senderName =
+              sender?.displayName || sender?.email || "Новое сообщение";
+            const chatName =
+              chat.type === "group" ? chat.name || "Групповой чат" : senderName;
+            const title =
+              chat.type === "group" ? `${chatName}: ${senderName}` : senderName;
+            const body = lastMsg.text || "Новое сообщение";
+            const icon =
+              chat.type === "group"
+                ? chat.photoURL || undefined
+                : sender?.photoURL || undefined;
+
+            showMessageNotification({
+              title,
+              body,
+              chatId: chat.id,
+              icon,
+              onClick: (id) => selectChat(id),
+            });
+          }
+
+          playIncomingMessageSound();
+        }
+      }
+
+      for (const chat of loadedChats) {
+        const millis = toMillis(chat.lastMessage?.createdAt);
+
+        if (millis) lastMessageMillisMap.value.set(chat.id, millis);
+      }
+
+      hasInitialChatsSnapshot.value = true;
+
       chats.value = loadedChats;
 
       const loadedChatIds = new Set(loadedChats.map((c) => c.id));
@@ -163,16 +271,17 @@ export const useChatStore = defineStore("chat", () => {
           pinnedMap.value.delete(chatId);
           pinnedOrderMap.value.delete(chatId);
           roleMap.value.delete(chatId);
+          hiddenAtMap.value.delete(chatId);
         }
       });
 
-      for (const [key, unsub] of lastStatusSubscriptions.value.entries()) {
-        const chatId = key.split(":")[0]!;
-
+      for (const [chatId, unsub] of lastStatusSubscriptions.value.entries()) {
         if (!loadedChatIds.has(chatId)) {
           unsub();
-          lastStatusSubscriptions.value.delete(key);
+
+          lastStatusSubscriptions.value.delete(chatId);
           lastMessageStatuses.value.delete(chatId);
+          chatReadStates.value.delete(chatId);
         }
       }
 
@@ -189,6 +298,12 @@ export const useChatStore = defineStore("chat", () => {
               pinnedOrderMap.value.set(chat.id, meta.pinnedOrder);
             } else {
               pinnedOrderMap.value.delete(chat.id);
+            }
+
+            if (meta.hiddenAt) {
+              hiddenAtMap.value.set(chat.id, meta.hiddenAt.toMillis());
+            } else {
+              hiddenAtMap.value.delete(chat.id);
             }
           });
           memberMetaSubscriptions.value.set(chat.id, unsub);
@@ -384,9 +499,13 @@ export const useChatStore = defineStore("chat", () => {
     lastStatusSubscriptions.value.forEach((unsub) => unsub());
     lastStatusSubscriptions.value.clear();
     lastMessageStatuses.value.clear();
+    chatReadStates.value.clear();
     unreadCounts.value.clear();
     pinnedMap.value.clear();
     pinnedOrderMap.value.clear();
+    hiddenAtMap.value.clear();
+    lastMessageMillisMap.value.clear();
+    hasInitialChatsSnapshot.value = false;
     chats.value = [];
     activeChatId.value = null;
     sessionStorage.removeItem(ACTIVE_CHAT_KEY);
@@ -397,6 +516,16 @@ export const useChatStore = defineStore("chat", () => {
 
   const isChatPinned = (chatId: string): boolean => {
     return pinnedMap.value.get(chatId) ?? false;
+  };
+
+  const mutedChats = computed<Set<string>>(() => {
+    const list = userStore.currentUser?.mutedChats ?? [];
+
+    return new Set(list);
+  });
+
+  const isChatMuted = (chatId: string): boolean => {
+    return mutedChats.value.has(chatId);
   };
 
   const getMyRole = (chatId: string): string => {
@@ -455,6 +584,8 @@ export const useChatStore = defineStore("chat", () => {
     getChatPhotoURL,
     getOtherUser,
     isChatPinned,
+    isChatMuted,
+    mutedChats,
     getMyRole,
     isChatOwner,
     isChatAdmin,
