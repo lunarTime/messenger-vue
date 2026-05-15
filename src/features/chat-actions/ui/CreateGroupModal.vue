@@ -241,7 +241,12 @@ const close = () => {
                     : getAvatarColor(user.id) + ' text-white!'
                 "
                 shape="circle"
-                :pt="{ image: { alt: user.displayName } }"
+                :pt="{
+                  image: {
+                    alt: user.displayName,
+                    class: 'object-cover',
+                  },
+                }"
               />
               <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">{{ user.displayName }}</div>
