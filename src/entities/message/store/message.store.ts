@@ -1,10 +1,10 @@
-import { ref, watch } from "vue";
+import { ref, computed, watch } from "vue";
 import { defineStore } from "pinia";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import {
   subscribeToChatMessages,
-  subscribeToDeliveryStatuses,
+  subscribeToChatReadStates,
   subscribeToMessageDeletedForUser,
   loadOlderMessages,
   sendMessage as sendFirebaseMessage,
@@ -12,17 +12,20 @@ import {
   editMessage as editFirebaseMessage,
   deleteMessageForMe as deleteFirebaseMessageForMe,
   deleteMessageForAll as deleteFirebaseMessageForAll,
-  setMessageDeliveryStatus,
+  markChatAsRead,
   subscribeToChatMemberMeta,
   subscribeToChatMeta,
 } from "@/shared/api/firebase/firestore";
 import type {
   Message,
   MessageAttachment,
-  MessageStatus,
   SendMessageOptions,
 } from "@/shared/types/message";
-import type { DocumentSnapshot, Unsubscribe } from "firebase/firestore";
+import type {
+  DocumentSnapshot,
+  Timestamp,
+  Unsubscribe,
+} from "firebase/firestore";
 
 export const useMessageStore = defineStore("messages", () => {
   const chatStore = useChatStore();
@@ -35,13 +38,46 @@ export const useMessageStore = defineStore("messages", () => {
   const isLoadingOlderMessages = ref(false);
 
   const unsubscribeMessages = ref<Unsubscribe | null>(null);
-  const unsubscribeStatuses = ref<Unsubscribe | null>(null);
+  const unsubscribeReadStates = ref<Unsubscribe | null>(null);
   const unsubscribeMemberMeta = ref<Unsubscribe | null>(null);
   const unsubscribeChatMeta = ref<Unsubscribe | null>(null);
   const deletedForUnsubscribers = ref<Map<string, Unsubscribe>>(new Map());
-  const messageStatuses = ref<Map<string, MessageStatus>>(new Map());
+
+  const readStates = ref<Map<string, Timestamp>>(new Map());
   const oldestCursor = ref<DocumentSnapshot | null>(null);
-  const pendingReadMessages = new Set<string>();
+  const effectiveClearedAtMillis = ref<number | null>(null);
+
+  const messageStatuses = computed<Map<string, "sent" | "read">>(() => {
+    const result = new Map<string, "sent" | "read">();
+    const myId = userStore.userId;
+    const chat = chatStore.activeChat;
+
+    if (!myId || !chat) return result;
+
+    const otherIds = chat.participants.filter((id) => id !== myId);
+
+    if (otherIds.length === 0) return result;
+
+    const isGroup = chat.type === "group";
+
+    for (const msg of messages.value) {
+      if (msg.senderId !== myId) continue;
+      if (!msg.createdAt) continue;
+
+      const createdMillis = msg.createdAt.toMillis();
+      const readFn = (uid: string) => {
+        const lastRead = readStates.value.get(uid);
+
+        return lastRead ? lastRead.toMillis() >= createdMillis : false;
+      };
+
+      const isRead = isGroup ? otherIds.some(readFn) : otherIds.every(readFn);
+
+      result.set(msg.id, isRead ? "read" : "sent");
+    }
+
+    return result;
+  });
 
   watch(
     () => chatStore.activeChatId,
@@ -55,12 +91,36 @@ export const useMessageStore = defineStore("messages", () => {
     { immediate: true },
   );
 
+  watch(
+    () => messages.value.length,
+    () => _markAllAsReadIfActive(),
+  );
+
+  function _markAllAsReadIfActive() {
+    const chatId = chatStore.activeChatId;
+    const myId = userStore.userId;
+
+    if (!chatId || !myId || messages.value.length === 0) return;
+
+    const last = messages.value[messages.value.length - 1]!;
+
+    if (!last.createdAt) return;
+
+    const myLastRead = readStates.value.get(myId);
+
+    if (myLastRead && myLastRead.toMillis() >= last.createdAt.toMillis()) {
+      return;
+    }
+
+    void markChatAsRead(chatId, myId, last.id);
+  }
+
   function _teardown() {
     unsubscribeMessages.value?.();
     unsubscribeMessages.value = null;
 
-    unsubscribeStatuses.value?.();
-    unsubscribeStatuses.value = null;
+    unsubscribeReadStates.value?.();
+    unsubscribeReadStates.value = null;
 
     unsubscribeMemberMeta.value?.();
     unsubscribeMemberMeta.value = null;
@@ -71,26 +131,11 @@ export const useMessageStore = defineStore("messages", () => {
     deletedForUnsubscribers.value.forEach((u) => u());
     deletedForUnsubscribers.value.clear();
 
-    messageStatuses.value.clear();
+    readStates.value = new Map();
     messages.value = [];
     oldestCursor.value = null;
     hasMore.value = false;
-    pendingReadMessages.clear();
-  }
-
-  function _attachStatusListener(chatId: string) {
-    unsubscribeStatuses.value?.();
-
-    const myId = userStore.userId;
-    if (!myId) return;
-
-    unsubscribeStatuses.value = subscribeToDeliveryStatuses(
-      chatId,
-      myId,
-      (statuses) => {
-        messageStatuses.value = statuses;
-      },
-    );
+    effectiveClearedAtMillis.value = null;
   }
 
   function _attachLegacyDeletedForListeners(chatId: string, msgs: Message[]) {
@@ -102,7 +147,6 @@ export const useMessageStore = defineStore("messages", () => {
     for (const [msgId, unsub] of deletedForUnsubscribers.value.entries()) {
       if (!currentMsgIds.has(msgId)) {
         unsub();
-
         deletedForUnsubscribers.value.delete(msgId);
       }
     }
@@ -129,53 +173,54 @@ export const useMessageStore = defineStore("messages", () => {
     isLoading.value = true;
     messages.value = [];
     oldestCursor.value = null;
+    effectiveClearedAtMillis.value = null;
 
-    unsubscribeMessages.value = subscribeToChatMessages(
-      chatId,
-      ({ messages: loaded, oldestCursor: cursor, hasMore: more }) => {
-        messages.value = loaded;
-        isLoading.value = false;
-        oldestCursor.value = cursor;
-        hasMore.value = more;
+    unsubscribeReadStates.value = subscribeToChatReadStates(chatId, (map) => {
+      readStates.value = map;
+    });
 
-        _attachStatusListener(chatId);
-        _attachLegacyDeletedForListeners(chatId, loaded);
-      },
-      userStore.userId || undefined,
-    );
+    _subscribeMessages(chatId);
 
     const myId = userStore.userId;
+
     if (!myId) return;
 
-    let lastClearedAtMillis: number | null = null;
-    let lastClearedForAllMillis: number | null = null;
+    let memberClearedMillis: number | null = null;
+    let chatClearedForAllMillis: number | null = null;
+
+    const applyClearedAt = () => {
+      const next = Math.max(
+        memberClearedMillis ?? 0,
+        chatClearedForAllMillis ?? 0,
+      );
+
+      const normalized = next > 0 ? next : null;
+
+      if (normalized !== effectiveClearedAtMillis.value) {
+        effectiveClearedAtMillis.value = normalized;
+
+        _subscribeMessages(chatId);
+      }
+    };
 
     unsubscribeMemberMeta.value = subscribeToChatMemberMeta(
       chatId,
       myId,
       (meta) => {
-        const millis = meta.clearedAt ? meta.clearedAt.toMillis() : null;
-
-        if (millis !== lastClearedAtMillis) {
-          lastClearedAtMillis = millis;
-          _reload(chatId);
-        }
+        memberClearedMillis = meta.clearedAt ? meta.clearedAt.toMillis() : null;
+        applyClearedAt();
       },
     );
 
     unsubscribeChatMeta.value = subscribeToChatMeta(chatId, (meta) => {
-      const millis = meta.clearedAtForAll
+      chatClearedForAllMillis = meta.clearedAtForAll
         ? meta.clearedAtForAll.toMillis()
         : null;
-
-      if (millis !== lastClearedForAllMillis) {
-        lastClearedForAllMillis = millis;
-        _reload(chatId);
-      }
+      applyClearedAt();
     });
   }
 
-  function _reload(chatId: string) {
+  function _subscribeMessages(chatId: string) {
     unsubscribeMessages.value?.();
     deletedForUnsubscribers.value.forEach((u) => u());
     deletedForUnsubscribers.value.clear();
@@ -191,8 +236,10 @@ export const useMessageStore = defineStore("messages", () => {
         oldestCursor.value = cursor;
         hasMore.value = more;
         _attachLegacyDeletedForListeners(chatId, loaded);
+        _markAllAsReadIfActive();
       },
       userStore.userId || undefined,
+      effectiveClearedAtMillis.value,
     );
   }
 
@@ -203,7 +250,6 @@ export const useMessageStore = defineStore("messages", () => {
 
     if (!oldestCursor.value) {
       hasMore.value = false;
-
       return;
     }
 
@@ -215,11 +261,11 @@ export const useMessageStore = defineStore("messages", () => {
         chatId,
         oldestCursor.value,
         userStore.userId || undefined,
+        effectiveClearedAtMillis.value,
       );
 
       if (older.length > 0) {
         messages.value = [...older, ...messages.value];
-
         _attachLegacyDeletedForListeners(chatId, older);
       }
 
@@ -233,28 +279,6 @@ export const useMessageStore = defineStore("messages", () => {
 
   const setOldestCursor = (cursor: DocumentSnapshot) => {
     oldestCursor.value = cursor;
-  };
-
-  const markMessageAsRead = async (messageId: string): Promise<void> => {
-    const chatId = chatStore.activeChatId;
-    const myId = userStore.userId;
-
-    if (!chatId || !myId) return;
-
-    const message = messages.value.find((m) => m.id === messageId);
-    if (!message || message.senderId === myId || message.isDeleted) return;
-
-    const currentStatus = messageStatuses.value.get(messageId);
-    if (currentStatus === "read" || pendingReadMessages.has(messageId)) return;
-
-    pendingReadMessages.add(messageId);
-    try {
-      await setMessageDeliveryStatus(messageId, chatId, myId, "read");
-    } catch (error) {
-      console.error("Ошибка при прочтении сообщения:", error);
-    } finally {
-      pendingReadMessages.delete(messageId);
-    }
   };
 
   const sendMessage = async (
@@ -329,6 +353,16 @@ export const useMessageStore = defineStore("messages", () => {
     }
 
     await deleteFirebaseMessageForAll(chatId, messageId, myId);
+
+    messages.value = messages.value.filter((m) => m.id !== messageId);
+
+    const unsub = deletedForUnsubscribers.value.get(messageId);
+
+    if (unsub) {
+      unsub();
+
+      deletedForUnsubscribers.value.delete(messageId);
+    }
   };
 
   const cleanup = () => _teardown();
@@ -344,7 +378,6 @@ export const useMessageStore = defineStore("messages", () => {
     editMessage,
     deleteMessageForMe,
     deleteMessageForAll,
-    markMessageAsRead,
     loadMoreMessages,
     setOldestCursor,
     cleanup,
