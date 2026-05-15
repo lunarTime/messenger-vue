@@ -1,23 +1,4 @@
-type ChatRequest = {
-  text?: string;
-};
-
-type ChatResponse = {
-  rewrittenText?: string;
-  error?: string;
-};
-
-type HandlerReq = {
-  method?: string;
-  body?: ChatRequest;
-};
-
-type HandlerRes = {
-  setHeader: (key: string, value: string) => void;
-  status: (code: number) => HandlerRes;
-  json: (data: ChatResponse) => void;
-  end: () => void;
-};
+import { applyCors, type HandlerReq, type HandlerRes } from "./_lib/http";
 
 interface GigaChatAuthResponse {
   access_token: string;
@@ -38,16 +19,7 @@ interface GigaChatResponse {
 }
 
 export default async function handler(req: HandlerReq, res: HandlerRes) {
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,OPTIONS,PATCH,DELETE,POST,PUT",
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
-  );
+  applyCors(req, res);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
