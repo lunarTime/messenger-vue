@@ -1,10 +1,9 @@
 ﻿<script setup lang="ts">
-import { computed, ref, inject, type Ref } from "vue";
+import { computed, ref, inject } from "vue";
 import type { Message } from "@/shared/types/message";
 import ChatBubble from "@/shared/ui/ChatBubble.vue";
 import MessageActionsMenu from "@/features/message-actions/ui/MessageActionsMenu.vue";
 import { useMessageStore } from "@/entities/message/store/message.store";
-import { useIntersectionObserver } from "@/shared/composables/useIntersectionObserver";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useSwipeMessage } from "@/shared/composables/useSwipeMessage";
 import { useLongPress } from "@/shared/composables/useLongPress";
@@ -24,13 +23,19 @@ const emit = defineEmits<{
   reply: [messageId: string];
   forward: [messageId: string];
   select: [messageId: string];
+  copy: [messageId: string];
 }>();
 
 const messageStore = useMessageStore();
 const chatStore = useChatStore();
 const selection = useMessageSelection();
 const messageRef = ref<HTMLElement | null>(null);
-const scrollContainer = inject<Ref<HTMLElement | null>>("chatScrollContainer");
+const scrollToMessage = inject<(id: string) => void>("scrollToMessage");
+const actionsMenuRef = ref<InstanceType<typeof MessageActionsMenu> | null>(
+  null,
+);
+const isContextMenuOpen = ref(false);
+const registerOpenMenu = inject<(hide: () => void) => void>("registerOpenMenu");
 
 const isOutgoing = computed(
   () => props.message.senderId === props.currentUserId,
@@ -72,6 +77,35 @@ const replyToSenderName = computed(() => {
   return participant?.displayName || "Пользователь";
 });
 
+const replyToDisplayText = computed(() => {
+  const msg = replyToMessage.value;
+
+  if (!msg) return undefined;
+  if (msg.isDeleted) return "Сообщение удалено";
+
+  const count = msg.attachments?.length ?? 0;
+
+  if (count > 0 && msg.text) {
+    const noun = count === 1 ? "вложение" : count < 5 ? "вложения" : "вложений";
+
+    return `${count} ${noun} · ${msg.text}`;
+  }
+
+  if (count > 0) {
+    const noun = count === 1 ? "вложение" : count < 5 ? "вложения" : "вложений";
+
+    return `${count} ${noun}`;
+  }
+
+  return msg.text || undefined;
+});
+
+const handleReplyClick = () => {
+  if (props.message.replyToMessageId) {
+    scrollToMessage?.(props.message.replyToMessageId);
+  }
+};
+
 const {
   swipeOffset,
   isSwiping,
@@ -97,7 +131,18 @@ const {
       if (selection.isActive) {
         selection.toggle(props.message.id);
       } else {
-        selection.enter(props.message.id);
+        const rect = messageRef.value?.getBoundingClientRect();
+
+        if (!rect) return;
+
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const menuHeight = 280;
+        const pageY =
+          spaceBelow >= menuHeight
+            ? rect.bottom + window.scrollY
+            : rect.top + window.scrollY - menuHeight;
+
+        actionsMenuRef.value?.showAt(rect.left + window.scrollX, pageY);
       }
     }
   },
@@ -118,6 +163,15 @@ const onTouchEnd = (e: TouchEvent) => {
   lpTouchEnd();
 };
 
+const onMenuOpen = () => {
+  registerOpenMenu?.(() => {
+    isContextMenuOpen.value = false;
+    actionsMenuRef.value?.hide();
+  });
+
+  isContextMenuOpen.value = true;
+};
+
 const handleClick = () => {
   if (selection.isActive && !props.message.isDeleted) {
     selection.toggle(props.message.id);
@@ -133,17 +187,6 @@ const handleDblClick = () => {
     }
   }
 };
-
-useIntersectionObserver(
-  messageRef,
-  () => {
-    if (!isOutgoing.value && !props.message.isDeleted) {
-      messageStore.markMessageAsRead(props.message.id);
-    }
-  },
-  scrollContainer,
-  { threshold: 0.5 },
-);
 </script>
 
 <template>
@@ -201,12 +244,15 @@ useIntersectionObserver(
         :deleted="message.isDeleted"
         :delivery-status="deliveryStatus"
         :sender-name="showSenderName ? sender?.displayName : undefined"
-        :reply-to-text="
-          replyToMessage?.isDeleted ? 'Сообщение удалено' : replyToMessage?.text
-        "
+        :reply-to-text="replyToDisplayText"
         :reply-to-sender-name="replyToSenderName ?? undefined"
+        :on-reply-click="
+          message.replyToMessageId ? handleReplyClick : undefined
+        "
         :forwarded-from="message.forwardedFrom"
         :attachments="message.attachments"
+        class="transition-all duration-200"
+        :class="{ 'border-(--p-primary-color)! border-4': isContextMenuOpen }"
       />
 
       <MessageActionsMenu
@@ -215,11 +261,14 @@ useIntersectionObserver(
         :is-outgoing="false"
         :is-deleted="message.isDeleted"
         :is-forwarded="!!message.forwardedFrom"
+        :has-text="!!message.text"
         @reply="emit('reply', message.id)"
         @forward="emit('forward', message.id)"
         @delete-for-me="emit('deleteForMe', message.id)"
         @select="selection.enter(message.id)"
-        class="opacity-0 group-hover:opacity-100 transition-opacity"
+        @copy="emit('copy', message.id)"
+        @menu-open="onMenuOpen"
+        @menu-close="isContextMenuOpen = false"
       />
 
       <MessageActionsMenu
@@ -228,13 +277,16 @@ useIntersectionObserver(
         :is-outgoing="true"
         :is-deleted="message.isDeleted"
         :is-forwarded="!!message.forwardedFrom"
+        :has-text="!!message.text"
         @reply="emit('reply', message.id)"
         @forward="emit('forward', message.id)"
         @edit="emit('edit', message.id)"
         @delete-for-me="emit('deleteForMe', message.id)"
         @delete-for-all="emit('deleteForAll', message.id)"
         @select="selection.enter(message.id)"
-        class="opacity-0 group-hover:opacity-100 transition-opacity"
+        @copy="emit('copy', message.id)"
+        @menu-open="onMenuOpen"
+        @menu-close="isContextMenuOpen = false"
       />
     </div>
 
