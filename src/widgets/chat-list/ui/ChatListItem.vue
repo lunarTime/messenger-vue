@@ -117,6 +117,7 @@ const typingText = computed(() => {
 
 const displayDate = useTimeAgo(props.date ?? null);
 const isPinned = computed(() => chatStore.isChatPinned(props.chatId));
+const isMuted = computed(() => chatStore.isChatMuted(props.chatId));
 const isLastOutgoing = computed(() => {
   const myId = userStore.userId;
   if (!myId || !props.lastMessage) return false;
@@ -222,6 +223,11 @@ const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
           <h3 class="font-semibold md:text-base text-sm truncate">
             {{ name }}
           </h3>
+          <i
+            v-if="isMuted"
+            class="pi pi-bell-slash text-xs shrink-0 opacity-50"
+            title="Уведомления отключены"
+          />
         </div>
         <time v-if="displayDate" class="text-xs shrink-0 ml-2 opacity-60">
           {{ displayDate }}
@@ -240,29 +246,15 @@ const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useLongPress({
 
         <div class="flex shrink-0">
           <template v-if="isLastOutgoing">
-            <i
-              v-if="lastMessageStatus === 'failed'"
-              class="pi pi-times-circle text-red-700 text-xs!"
-              title="Ошибка"
-            />
-
             <div
-              v-else-if="
-                lastMessageStatus === 'read' ||
-                lastMessageStatus === 'delivered'
-              "
+              v-if="lastMessageStatus === 'read'"
               class="flex -space-x-2"
               title="Прочитано"
             >
-              <i class="pi pi-check opacity-70 text-xs!" />
-              <i class="pi pi-check opacity-70 text-xs!" />
+              <i class="pi pi-check text-xs!" />
+              <i class="pi pi-check text-xs!" />
             </div>
 
-            <i
-              v-else-if="lastMessageStatus === 'sending'"
-              class="pi pi-clock opacity-50 text-xs!"
-              title="Отправка..."
-            />
             <i
               v-else
               class="pi pi-check opacity-70 text-xs!"
