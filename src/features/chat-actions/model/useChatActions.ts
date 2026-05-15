@@ -7,6 +7,7 @@ import {
   clearChatHistoryForMe,
   leaveChat,
   setChatPinned,
+  setChatMuted,
   removeGroupMember,
   setMemberRole,
 } from "@/shared/api/firebase/firestore";
@@ -26,6 +27,19 @@ export function useChatActions() {
   const togglePin = async (chatId: string, isPinned: boolean) => {
     const myId = requireMyId();
     await setChatPinned(chatId, myId, !isPinned);
+  };
+
+  const toggleMute = async (chatId: string) => {
+    const myId = requireMyId();
+    const wasMuted = chatStore.isChatMuted(chatId);
+
+    await setChatMuted(myId, chatId, !wasMuted);
+
+    toast.add({
+      severity: "success",
+      summary: wasMuted ? "Уведомления включены" : "Уведомления отключены",
+      life: 2000,
+    });
   };
 
   const deleteChat = async (chatId: string) => {
@@ -77,19 +91,19 @@ export function useChatActions() {
     const myId = requireMyId();
 
     confirm.require({
-      header: "Очистить историю у всех",
+      header: "Удалить мои сообщения у всех",
       message:
-        "Очистить историю сообщений для всех участников? Это действие нельзя отменить.",
+        "Удалить все ваши сообщения в этом чате у всех участников? Сообщения собеседника останутся. Это действие нельзя отменить.",
       icon: "pi pi-exclamation-triangle",
       rejectLabel: "Отмена",
-      acceptLabel: "Очистить у всех",
+      acceptLabel: "Удалить у всех",
       acceptClass: "p-button-danger",
       accept: async () => {
         await clearChatHistoryForAll(chatId, myId);
         toast.add({
           severity: "success",
           summary: "Готово",
-          detail: "История очищена для всех",
+          detail: "Ваши сообщения удалены у всех",
           life: 2500,
         });
       },
@@ -215,6 +229,7 @@ export function useChatActions() {
 
   return {
     togglePin,
+    toggleMute,
     deleteChat,
     clearHistoryForMe,
     clearHistoryForAll,
