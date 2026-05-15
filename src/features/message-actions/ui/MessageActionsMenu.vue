@@ -9,6 +9,7 @@ const props = defineProps<{
   isOutgoing: boolean;
   isDeleted: boolean;
   isForwarded: boolean;
+  hasText?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -18,10 +19,19 @@ const emit = defineEmits<{
   reply: [];
   forward: [];
   select: [];
+  copy: [];
+  menuOpen: [];
+  menuClose: [];
 }>();
 
 const menuRef = ref();
 const isMenuVisible = ref(false);
+
+const closeAndEmit = (action: () => void) => {
+  emit("menuClose");
+
+  action();
+};
 
 const menuItems = computed<MenuItem[]>(() => {
   const items: MenuItem[] = [];
@@ -30,33 +40,41 @@ const menuItems = computed<MenuItem[]>(() => {
     items.push({
       label: "Ответить",
       icon: "pi pi-reply",
-      command: () => emit("reply"),
+      command: () => closeAndEmit(() => emit("reply")),
     });
 
     items.push({
       label: "Переслать",
       icon: "pi pi-share-alt",
-      command: () => emit("forward"),
+      command: () => closeAndEmit(() => emit("forward")),
     });
 
     if (props.isOutgoing && !props.isForwarded) {
       items.push({
         label: "Редактировать",
         icon: "pi pi-pencil",
-        command: () => emit("edit"),
+        command: () => closeAndEmit(() => emit("edit")),
+      });
+    }
+
+    if (props.hasText) {
+      items.push({
+        label: "Скопировать",
+        icon: "pi pi-copy",
+        command: () => closeAndEmit(() => emit("copy")),
       });
     }
 
     items.push({
       label: "Выбрать",
       icon: "pi pi-check-circle",
-      command: () => emit("select"),
+      command: () => closeAndEmit(() => emit("select")),
     });
 
     items.push({
       label: "Удалить у меня",
       icon: "pi pi-trash",
-      command: () => emit("deleteForMe"),
+      command: () => closeAndEmit(() => emit("deleteForMe")),
     });
 
     if (props.isOutgoing) {
@@ -64,14 +82,14 @@ const menuItems = computed<MenuItem[]>(() => {
         label: "Удалить у всех",
         icon: "pi pi-trash",
         severity: "danger",
-        command: () => emit("deleteForAll"),
+        command: () => closeAndEmit(() => emit("deleteForAll")),
       });
     }
   } else {
     items.push({
       label: "Удалить у меня",
       icon: "pi pi-trash",
-      command: () => emit("deleteForMe"),
+      command: () => closeAndEmit(() => emit("deleteForMe")),
     });
   }
 
@@ -93,6 +111,8 @@ const showAt = (pageX: number, pageY: number) => {
     preventDefault: () => {},
   });
   isMenuVisible.value = true;
+
+  emit("menuOpen");
 };
 
 const hide = () => {
@@ -100,24 +120,37 @@ const hide = () => {
   isMenuVisible.value = false;
 };
 
+const onMenuHide = () => {
+  isMenuVisible.value = false;
+
+  emit("menuClose");
+};
+
 defineExpose({ showAt, hide });
 </script>
 
 <template>
-  <div v-if="hasActions">
-    <Button
-      text
-      rounded
-      class="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity"
-      :class="{ 'opacity-100!': isMenuVisible }"
-      @click="toggleMenu"
-      aria-label="Меню сообщения"
-    >
-      <template #icon>
-        <EllipsisVerticalIcon class="size-4" />
-      </template>
-    </Button>
+  <template v-if="hasActions">
+    <div class="hidden md:block">
+      <Button
+        text
+        rounded
+        class="flex opacity-0 group-hover:opacity-100 transition-opacity"
+        :class="{ 'opacity-100!': isMenuVisible }"
+        @click="toggleMenu"
+        aria-label="Меню сообщения"
+      >
+        <template #icon>
+          <EllipsisVerticalIcon class="size-4" />
+        </template>
+      </Button>
+    </div>
 
-    <ContextMenu ref="menuRef" :model="menuItems" :popup="true" />
-  </div>
+    <ContextMenu
+      ref="menuRef"
+      :model="menuItems"
+      :popup="true"
+      @hide="onMenuHide"
+    />
+  </template>
 </template>
