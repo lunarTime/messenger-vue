@@ -67,6 +67,22 @@ const { isRewriting, aiError, handleRewrite } = useAiRewrite(message);
 const { isDark } = useTheme();
 const messageCompose = useMessageCompose();
 
+const replyPreviewText = computed(() => {
+  const ctx = messageCompose.replyContext;
+
+  if (!ctx) return "";
+
+  const count = ctx.attachmentCount ?? 0;
+
+  if (count > 0) {
+    const noun = count === 1 ? "вложение" : count < 5 ? "вложения" : "вложений";
+
+    return ctx.text ? `${count} ${noun} · ${ctx.text}` : `${count} ${noun}`;
+  }
+
+  return ctx.text;
+});
+
 watchDebounced(
   message,
   (val, prevVal) => {
@@ -93,26 +109,33 @@ type Emoji = { i: string };
 
 const saveCursorPos = () => {
   const el = getTextarea();
+
   if (el) savedCursorPos.value = el.selectionStart;
 };
 
 const onSelectEmoji = async (emoji: Emoji) => {
   const el = getTextarea();
+
   if (!el) return;
 
   const insertAt = savedCursorPos.value ?? message.value.length;
+
   message.value =
     message.value.slice(0, insertAt) + emoji.i + message.value.slice(insertAt);
+
   const newPos = insertAt + emoji.i.length;
+
   savedCursorPos.value = newPos;
 
   await nextTick();
+
   el.focus();
   el.setSelectionRange(newPos, newPos);
 };
 
 const toggleEmoji = () => {
   saveCursorPos();
+
   isEmojiOpen.value = !isEmojiOpen.value;
 };
 
@@ -138,6 +161,7 @@ function openFilePicker() {
 
 function onFileInputChange(event: Event) {
   const input = event.target as HTMLInputElement;
+
   if (!input.files) return;
 
   const errors = fileUpload.addFiles(Array.from(input.files));
@@ -149,13 +173,16 @@ function onFileInputChange(event: Event) {
 
 function onDragEnter(event: DragEvent) {
   event.preventDefault();
+
   dragCounter.value++;
   isDragging.value = true;
 }
 
 function onDragLeave(event: DragEvent) {
   event.preventDefault();
+
   dragCounter.value--;
+
   if (dragCounter.value <= 0) {
     dragCounter.value = 0;
     isDragging.value = false;
@@ -168,13 +195,16 @@ function onDragOver(event: DragEvent) {
 
 function onDrop(event: DragEvent) {
   event.preventDefault();
+
   isDragging.value = false;
   dragCounter.value = 0;
 
   const files = Array.from(event.dataTransfer?.files ?? []);
+
   if (!files.length) return;
 
   const errors = fileUpload.addFiles(files);
+
   if (errors.length) showFileErrors(errors);
 }
 
@@ -182,6 +212,7 @@ function getFileIcon(mimeType: string): string {
   if (mimeType.startsWith("image/")) return "pi-image";
   if (mimeType.startsWith("video/")) return "pi-video";
   if (mimeType.startsWith("audio/")) return "pi-volume-up";
+
   return "pi-file";
 }
 
@@ -292,7 +323,7 @@ onUnmounted(() => window.removeEventListener("keydown", onGlobalKeyDown));
             {{ messageCompose.replyContext.senderName }}
           </div>
           <div class="text-xs opacity-60 truncate">
-            {{ messageCompose.replyContext.text }}
+            {{ replyPreviewText }}
           </div>
         </div>
         <Button
