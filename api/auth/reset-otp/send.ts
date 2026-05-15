@@ -1,15 +1,15 @@
 import bcrypt from "bcryptjs";
 import { Timestamp } from "firebase-admin/firestore";
-import { adminAuth, adminDb } from "../_lib/firebase-admin.js";
-import { sendOtpEmail } from "../_lib/mailer.js";
+import { adminAuth, adminDb } from "../../_lib/firebase-admin.js";
+import { sendPasswordResetEmail } from "../../_lib/mailer.js";
 import {
   applyCors,
   getClientIp,
   normalizeEmail,
   type HandlerReq,
   type HandlerRes,
-} from "../_lib/http.js";
-import { checkRateLimit } from "../_lib/rateLimit.js";
+} from "../../_lib/http.js";
+import { checkRateLimit } from "../../_lib/rateLimit.js";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -20,23 +20,19 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
   applyCors(req, res);
 
   if (req.method === "OPTIONS") return res.status(200).end();
+
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
-  const body = (req.body || {}) as { email?: unknown; firstName?: unknown };
+  const body = (req.body || {}) as { email?: unknown };
   const email = normalizeEmail(body.email);
-  const firstName =
-    typeof body.firstName === "string"
-      ? body.firstName.trim().slice(0, 50)
-      : "";
 
   if (!email) return res.status(400).json({ error: "Некорректный email" });
-  if (!firstName) return res.status(400).json({ error: "Имя обязательно" });
 
   try {
     const ip = getClientIp(req);
     const ipLimit = await checkRateLimit({
-      bucket: "send-otp:ip",
+      bucket: "reset-otp:ip",
       key: ip,
       limit: RATE_LIMIT,
       windowMs: RATE_WINDOW_MS,
@@ -50,11 +46,12 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
     }
 
     const emailLimit = await checkRateLimit({
-      bucket: "send-otp:email",
+      bucket: "reset-otp:email",
       key: email,
       limit: RATE_LIMIT,
       windowMs: RATE_WINDOW_MS,
     });
+
     if (!emailLimit.allowed) {
       return res.status(429).json({
         error: `Слишком много запросов для этого email. Попробуйте через ${emailLimit.retryAfter} сек`,
@@ -62,16 +59,10 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
       });
     }
 
-    try {
-      await adminAuth().getUserByEmail(email);
-      return res.status(409).json({ error: "Email уже зарегистрирован" });
-    } catch (e: any) {
-      if (e?.code !== "auth/user-not-found") throw e;
-    }
-
     const db = adminDb();
-    const ref = db.collection("emailOtps").doc(email);
+    const ref = db.collection("passwordResetOtps").doc(email);
     const now = Date.now();
+
     const existing = await ref.get();
 
     if (existing.exists) {
@@ -89,6 +80,26 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
       }
     }
 
+    let userExists = false;
+
+    try {
+      await adminAuth().getUserByEmail(email);
+
+      userExists = true;
+    } catch (e: any) {
+      if (e?.code !== "auth/user-not-found") throw e;
+    }
+
+    if (!userExists) {
+      await ref.set({
+        lastSentAt: now,
+        createdAt: now,
+        expiresAt: Timestamp.fromMillis(now + RESEND_COOLDOWN_MS),
+      });
+
+      return res.status(200).json({ ok: true, expiresIn: OTP_TTL_MS / 1000 });
+    }
+
     const code = String(Math.floor(100000 + Math.random() * 900000));
     const codeHash = await bcrypt.hash(code, 10);
 
@@ -100,11 +111,11 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
       createdAt: now,
     });
 
-    await sendOtpEmail(email, code, firstName);
+    await sendPasswordResetEmail(email, code);
 
     return res.status(200).json({ ok: true, expiresIn: OTP_TTL_MS / 1000 });
   } catch (error) {
-    console.error("send-otp error:", error);
+    console.error("reset-otp/send error:", error);
 
     const message =
       error instanceof Error ? error.message : "Internal Server Error";

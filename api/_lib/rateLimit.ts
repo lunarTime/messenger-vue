@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "./firebase-admin.js";
 
 const COLLECTION = "rateLimits";
@@ -55,7 +56,10 @@ export async function checkRateLimit(
 
       tx.set(
         ref,
-        { hits, expiresAt: hits[hits.length - 1] + windowMs },
+        {
+          hits,
+          expiresAt: Timestamp.fromMillis(hits[hits.length - 1] + windowMs),
+        },
         { merge: true },
       );
 
@@ -63,7 +67,11 @@ export async function checkRateLimit(
     }
 
     hits.push(now);
-    tx.set(ref, { hits, expiresAt: now + windowMs }, { merge: true });
+    tx.set(
+      ref,
+      { hits, expiresAt: Timestamp.fromMillis(now + windowMs) },
+      { merge: true },
+    );
 
     return { allowed: true, remaining: limit - hits.length, retryAfter: 0 };
   });

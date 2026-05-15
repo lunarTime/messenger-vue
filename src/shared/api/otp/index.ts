@@ -81,3 +81,25 @@ export function sendOtp(payload: SendOtpPayload): Promise<SendOtpResult> {
 export function verifyOtp(payload: VerifyOtpPayload): Promise<VerifyOtpResult> {
   return postJson<VerifyOtpResult>("/api/auth/verify-otp", payload);
 }
+
+export interface RequestPasswordResetPayload {
+  email: string;
+}
+
+export interface ConfirmPasswordResetPayload {
+  email: string;
+  code: string;
+  newPassword: string;
+}
+
+export function requestPasswordReset(
+  payload: RequestPasswordResetPayload,
+): Promise<SendOtpResult> {
+  return postJson<SendOtpResult>("/api/auth/reset-otp/send", payload);
+}
+
+export function confirmPasswordReset(
+  payload: ConfirmPasswordResetPayload,
+): Promise<VerifyOtpResult> {
+  return postJson<VerifyOtpResult>("/api/auth/reset-otp/verify", payload);
+}
