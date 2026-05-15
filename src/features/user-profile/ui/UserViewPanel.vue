@@ -2,17 +2,45 @@
 import { computed } from "vue";
 import { useUserView } from "@/features/user-profile/model/useUserView";
 import { useChatStore } from "@/entities/chat/store/chat.store";
+import { useUserStore } from "@/entities/user/store/user.store";
+import { useChatActions } from "@/features/chat-actions/model/useChatActions";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
 import Avatar from "primevue/avatar";
+import Button from "primevue/button";
 
 const props = defineProps<{ userId: string | null }>();
 
-const emit = defineEmits<{ "open-chat": [chatId: string] }>();
+const emit = defineEmits<{
+  "open-chat": [chatId: string];
+  "write-directly": [];
+}>();
 
 const chatStore = useChatStore();
+const userStore = useUserStore();
+const { toggleMute } = useChatActions();
 const { user, isOnline, sharedGroups } = useUserView(() => props.userId);
 
 const avatarBgColor = computed(() => getAvatarColor(props.userId ?? ""));
+
+const directChatId = computed(() => {
+  const myId = userStore.userId;
+  const otherId = props.userId;
+
+  if (!myId || !otherId || myId === otherId) return null;
+
+  const found = chatStore.chats.find(
+    (c) =>
+      c.type === "direct" &&
+      c.participants.includes(myId) &&
+      c.participants.includes(otherId),
+  );
+
+  return found?.id ?? null;
+});
+
+const isMuted = computed(() =>
+  directChatId.value ? chatStore.isChatMuted(directChatId.value) : false,
+);
 
 const getChatName = (chatId: string) => {
   const chat = chatStore.chats.find((c) => c.id === chatId);
@@ -63,6 +91,28 @@ const getChatPhoto = (chatId: string) => {
           <p class="md:text-sm text-xs opacity-60 mt-0.5">
             {{ isOnline ? "в сети" : "не в сети" }}
           </p>
+          <div class="flex items-center justify-center gap-2 mt-3">
+            <Button
+              label="Написать лично"
+              icon="pi pi-send"
+              size="small"
+              @click="emit('write-directly')"
+            />
+            <Button
+              v-if="directChatId"
+              :icon="isMuted ? 'pi pi-bell' : 'pi pi-bell-slash'"
+              severity="secondary"
+              size="small"
+              rounded
+              :aria-label="
+                isMuted ? 'Включить уведомления' : 'Отключить уведомления'
+              "
+              v-tooltip.top="
+                isMuted ? 'Включить уведомления' : 'Отключить уведомления'
+              "
+              @click="directChatId && toggleMute(directChatId)"
+            />
+          </div>
         </div>
       </div>
 
