@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "../_lib/firebase-admin.js";
 import { sendOtpEmail } from "../_lib/mailer.js";
 import {
@@ -93,7 +94,7 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
 
     await ref.set({
       codeHash,
-      expiresAt: now + OTP_TTL_MS,
+      expiresAt: Timestamp.fromMillis(now + OTP_TTL_MS),
       attempts: 0,
       lastSentAt: now,
       createdAt: now,

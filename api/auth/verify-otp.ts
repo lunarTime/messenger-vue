@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "../_lib/firebase-admin.js";
 import { checkRateLimit } from "../_lib/rateLimit.js";
 import {
@@ -90,11 +90,11 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
 
     const data = snap.data() as {
       codeHash: string;
-      expiresAt: number;
+      expiresAt: Timestamp;
       attempts: number;
     };
 
-    if (Date.now() > data.expiresAt) {
+    if (Date.now() > data.expiresAt.toMillis()) {
       await ref.delete();
 
       return res.status(400).json({ error: "Код истёк. Запросите новый" });
