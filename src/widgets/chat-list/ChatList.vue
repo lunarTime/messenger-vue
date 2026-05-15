@@ -18,6 +18,8 @@ const chatStore = useChatStore();
 const userStore = useUserStore();
 const { isMobile } = useIsMobile();
 
+const chatFilterQuery = ref("");
+
 const { unreadCounts } = useUnreadCounts(
   computed(() => chatStore.visibleChats),
 );
@@ -57,20 +59,35 @@ const getOtherUserId = (chat: Chat): string => {
   return chat.participants.find((id) => id !== userStore.userId) || "";
 };
 
-const normalizeLastMessage = (message?: Chat["lastMessage"]) => {
+const normalizeLastMessage = (message?: Chat["lastMessage"] | null) => {
   if (!message) return undefined;
+
+  const text = message.text ?? "";
 
   return {
     ...message,
-    text: message.text.length > 500 ? message.text.slice(0, 500) : message.text,
+    text: text.length > 500 ? text.slice(0, 500) : text,
   };
 };
 
+const filteredVisibleChats = computed(() => {
+  const q = chatFilterQuery.value.trim().toLowerCase();
+
+  if (!q) return chatStore.visibleChats;
+
+  return chatStore.visibleChats.filter((chat) => {
+    const name = chatStore.otherUserName(chat).toLowerCase();
+    const lastMsg = chat.lastMessage?.text?.toLowerCase() ?? "";
+
+    return name.includes(q) || lastMsg.includes(q);
+  });
+});
+
 const pinnedChats = computed(() =>
-  chatStore.visibleChats.filter((c) => chatStore.isChatPinned(c.id)),
+  filteredVisibleChats.value.filter((c) => chatStore.isChatPinned(c.id)),
 );
 const unpinnedChats = computed(() =>
-  chatStore.visibleChats.filter((c) => !chatStore.isChatPinned(c.id)),
+  filteredVisibleChats.value.filter((c) => !chatStore.isChatPinned(c.id)),
 );
 
 const openContextChatId = ref<string | null>(null);
@@ -127,7 +144,7 @@ const onPinnedDragOver = (chatId: string) => {
   <div
     class="flex flex-col h-full bg-(--p-primary-color)/20 md:gap-4 md:p-4 p-2 gap-2 md:rounded-xl dark:bg-white/10"
   >
-    <UserSearch />
+    <UserSearch @filter-change="chatFilterQuery = $event" />
 
     <ScrollPanel
       class="flex-1 h-0 w-full min-w-0"
@@ -157,14 +174,20 @@ const onPinnedDragOver = (chatId: string) => {
       </div>
 
       <div
-        v-else-if="
-          chatStore.visibleChats.length === 0 && chatStore.isInitialized
-        "
+        v-else-if="chatStore.isInitialized && filteredVisibleChats.length === 0"
         class="p-8 text-center"
       >
         <i class="pi pi-comments text-4xl mb-4"></i>
-        <p>Нет активных чатов</p>
-        <p class="text-sm mt-2">Используйте поиск выше, чтобы начать общение</p>
+        <template v-if="chatFilterQuery">
+          <p>Ничего не найдено</p>
+          <p class="text-sm mt-2">Попробуйте другой запрос</p>
+        </template>
+        <template v-else>
+          <p>Нет активных чатов</p>
+          <p class="text-sm mt-2">
+            Используйте поиск выше, чтобы начать общение
+          </p>
+        </template>
       </div>
 
       <div
