@@ -97,7 +97,7 @@ const handleForward = async (targetChat: Chat) => {
         }),
         forwardedFrom:
           msg.senderId === userStore.userId
-            ? "Вы"
+            ? userStore.currentUser?.displayName || "Пользователь"
             : chatStore.chatParticipants.get(msg.senderId)?.displayName ||
               "Пользователь",
         attachments: msg.attachments,
