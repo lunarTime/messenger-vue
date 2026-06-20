@@ -90,6 +90,16 @@ const unpinnedChats = computed(() =>
   filteredVisibleChats.value.filter((c) => !chatStore.isChatPinned(c.id)),
 );
 
+const isChatListReady = computed(
+  () =>
+    !userStore.isLoading &&
+    userStore.isAuthenticated &&
+    chatStore.isInitialized &&
+    chatStore.isMemberMetaReady &&
+    chatStore.isParticipantsReady &&
+    !chatStore.isLoading,
+);
+
 const openContextChatId = ref<string | null>(null);
 
 const draggingPinnedChatId = ref<string | null>(null);
@@ -151,7 +161,7 @@ const onPinnedDragOver = (chatId: string) => {
       :class="{ 'pr-[16px]': !isMobile }"
     >
       <div
-        v-if="chatStore.isLoading && !chatStore.isInitialized"
+        v-if="!isChatListReady"
         class="flex flex-col md:gap-2 gap-0 w-full"
       >
         <div
@@ -174,7 +184,7 @@ const onPinnedDragOver = (chatId: string) => {
       </div>
 
       <div
-        v-else-if="chatStore.isInitialized && filteredVisibleChats.length === 0"
+        v-else-if="filteredVisibleChats.length === 0"
         class="p-8 text-center"
       >
         <i class="pi pi-comments text-4xl mb-4"></i>
