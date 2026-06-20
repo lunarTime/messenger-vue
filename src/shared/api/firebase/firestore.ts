@@ -2,7 +2,9 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
+  getDocsFromServer,
   addDoc,
   updateDoc,
   setDoc,
@@ -20,6 +22,7 @@ import {
   type DocumentData,
   type Timestamp,
   type DocumentSnapshot,
+  type QueryDocumentSnapshot,
   arrayUnion,
   increment,
   writeBatch,
@@ -67,6 +70,22 @@ export async function getUserById(userId: string): Promise<User | null> {
 
   try {
     const userDoc = await getDoc(doc(db, "users", userId));
+    return userDoc.exists()
+      ? ({ id: userDoc.id, ...userDoc.data() } as User)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getUserByIdFromServer(
+  userId: string,
+): Promise<User | null> {
+  if (!userId) return null;
+
+  try {
+    const userDoc = await getDocFromServer(doc(db, "users", userId));
+
     return userDoc.exists()
       ? ({ id: userDoc.id, ...userDoc.data() } as User)
       : null;
@@ -357,20 +376,65 @@ export interface ChatMemberMeta {
   unreadCount: number;
 }
 
+export type ChatMemberMetaSnapshot = ChatMemberMeta & {
+  fromCache: boolean;
+};
+
+const EMPTY_MEMBER_META: ChatMemberMeta = {
+  exists: false,
+  isPinned: false,
+  pinnedOrder: null,
+  clearedAt: null,
+  hiddenAt: null,
+  role: "member",
+  unreadCount: 0,
+};
+
+function mapMemberMetaSnap(snap: DocumentSnapshot): ChatMemberMeta {
+  if (!snap.exists()) {
+    return EMPTY_MEMBER_META;
+  }
+
+  const data = snap.data() as any;
+
+  return {
+    exists: true,
+    isPinned: Boolean(data.isPinned),
+    pinnedOrder:
+      typeof data.pinnedOrder === "number"
+        ? (data.pinnedOrder as number)
+        : null,
+    clearedAt: (data.clearedAt as Timestamp) || null,
+    hiddenAt: (data.hiddenAt as Timestamp) || null,
+    role: (data.role as ChatMemberRole) || "member",
+    unreadCount: (data.unreadCount as number) || 0,
+  };
+}
+
+export async function getChatMemberMetaFromServer(
+  chatId: string,
+  userId: string,
+): Promise<ChatMemberMeta> {
+  if (!chatId || !userId) {
+    return EMPTY_MEMBER_META;
+  }
+
+  const snap = await getDocFromServer(
+    doc(db, "chats", chatId, "members", userId),
+  );
+
+  return mapMemberMetaSnap(snap);
+}
+
 export function subscribeToChatMemberMeta(
   chatId: string,
   userId: string,
-  callback: (meta: ChatMemberMeta) => void,
+  callback: (meta: ChatMemberMetaSnapshot) => void,
 ): Unsubscribe {
   if (!chatId || !userId) {
     callback({
-      exists: false,
-      isPinned: false,
-      pinnedOrder: null,
-      clearedAt: null,
-      hiddenAt: null,
-      role: "member",
-      unreadCount: 0,
+      ...EMPTY_MEMBER_META,
+      fromCache: false,
     });
     return () => {};
   }
@@ -380,15 +444,12 @@ export function subscribeToChatMemberMeta(
   return onSnapshot(
     ref,
     (snap) => {
+      const fromCache = snap.metadata.fromCache;
+
       if (!snap.exists()) {
         callback({
-          exists: false,
-          isPinned: false,
-          pinnedOrder: null,
-          clearedAt: null,
-          hiddenAt: null,
-          role: "member",
-          unreadCount: 0,
+          ...EMPTY_MEMBER_META,
+          fromCache,
         });
         return;
       }
@@ -406,17 +467,13 @@ export function subscribeToChatMemberMeta(
         hiddenAt: (data.hiddenAt as Timestamp) || null,
         role: (data.role as ChatMemberRole) || "member",
         unreadCount: (data.unreadCount as number) || 0,
+        fromCache,
       });
     },
     () =>
       callback({
-        exists: false,
-        isPinned: false,
-        pinnedOrder: null,
-        clearedAt: null,
-        hiddenAt: null,
-        role: "member",
-        unreadCount: 0,
+        ...EMPTY_MEMBER_META,
+        fromCache: false,
       }),
   );
 }
@@ -667,45 +724,67 @@ export async function clearChatHistoryForAll(
   await recomputeChatLastMessage(chatId);
 }
 
-export function subscribeToUserChats(
-  userId: string,
-  callback: (chats: Chat[]) => void,
-): Unsubscribe {
-  if (!userId) {
-    callback([]);
-    return () => {};
-  }
+function mapChatDocs(docs: QueryDocumentSnapshot<DocumentData>[]): Chat[] {
+  return docs.map((chatDoc) => {
+    const data = chatDoc.data({ serverTimestamps: "estimate" });
 
-  const q = query(
+    return {
+      id: chatDoc.id,
+      participants: data.participants ?? [],
+      type: data.type ?? "direct",
+      name: data.name ?? null,
+      photoURL: data.photoURL ?? null,
+      createdBy: data.createdBy ?? null,
+      adminIds: data.adminIds ?? null,
+      updatedAt: data.updatedAt ?? null,
+      lastMessage: data.lastMessage ?? null,
+      createdAt: data.createdAt ?? null,
+    } as Chat;
+  });
+}
+
+function buildUserChatsQuery(userId: string) {
+  return query(
     collection(db, "chats"),
     where("participants", "array-contains", userId),
     orderBy("updatedAt", "desc"),
   );
+}
+
+export async function getUserChatsFromServer(userId: string): Promise<Chat[]> {
+  if (!userId) return [];
+
+  const snapshot = await getDocsFromServer(buildUserChatsQuery(userId));
+
+  return mapChatDocs(snapshot.docs).filter((chat) =>
+    chat.participants.includes(userId),
+  );
+}
+
+export type UserChatsSnapshotMeta = {
+  fromCache: boolean;
+};
+
+export function subscribeToUserChats(
+  userId: string,
+  callback: (chats: Chat[], meta: UserChatsSnapshotMeta) => void,
+): Unsubscribe {
+  if (!userId) {
+    callback([], { fromCache: false });
+    return () => {};
+  }
 
   return onSnapshot(
-    q,
+    buildUserChatsQuery(userId),
     (snapshot) => {
-      const chats = snapshot.docs.map((doc) => {
-        const data = doc.data({ serverTimestamps: "estimate" });
+      const chats = mapChatDocs(snapshot.docs).filter((chat) =>
+        chat.participants.includes(userId),
+      );
 
-        return {
-          id: doc.id,
-          participants: data.participants ?? [],
-          type: data.type ?? "direct",
-          name: data.name ?? null,
-          photoURL: data.photoURL ?? null,
-          createdBy: data.createdBy ?? null,
-          adminIds: data.adminIds ?? null,
-          updatedAt: data.updatedAt ?? null,
-          lastMessage: data.lastMessage ?? null,
-          createdAt: data.createdAt ?? null,
-        } as Chat;
-      });
-
-      callback(chats);
+      callback(chats, { fromCache: snapshot.metadata.fromCache });
     },
     () => {
-      callback([]);
+      callback([], { fromCache: false });
     },
   );
 }
@@ -977,9 +1056,13 @@ export async function loadOlderMessages(
   return { messages, nextCursor: nextCursor ?? null };
 }
 
+export type UserSnapshotMeta = {
+  fromCache: boolean;
+};
+
 export function subscribeToUser(
   userId: string,
-  callback: (user: User | null) => void,
+  callback: (user: User | null, meta?: UserSnapshotMeta) => void,
 ): Unsubscribe {
   if (!userId) {
     callback(null);
@@ -989,10 +1072,12 @@ export function subscribeToUser(
   return onSnapshot(
     doc(db, "users", userId),
     (userDoc) => {
+      const fromCache = userDoc.metadata.fromCache;
+
       if (userDoc.exists()) {
-        callback({ id: userDoc.id, ...userDoc.data() } as User);
+        callback({ id: userDoc.id, ...userDoc.data() } as User, { fromCache });
       } else {
-        callback(null);
+        callback(null, { fromCache });
       }
     },
     () => {
