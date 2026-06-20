@@ -19,7 +19,7 @@ const isProfileOpen = ref(false);
   <div
     class="flex items-center justify-between gap-2 dark:bg-black/20 bg-white/40 rounded-md md:p-2 py-0.5 px-1"
   >
-    <div v-if="!user" class="flex items-center gap-2 min-w-0">
+    <div v-if="userStore.isLoading || !user" class="flex items-center gap-2 min-w-0">
       <Skeleton
         class="flex-none"
         :height="isMobile ? '2rem' : '3rem'"
