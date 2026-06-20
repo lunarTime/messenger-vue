@@ -203,6 +203,7 @@ const confirmDeleteForAll = async () => {
   <Dialog
     v-model:visible="deleteDialogVisible"
     modal
+    dismissable-mask
     header="Удалить сообщения"
     :style="{ width: '26rem' }"
     :breakpoints="{ '640px': '95vw' }"

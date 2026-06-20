@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted, watch } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
-import {
-  subscribeToTyping,
-  subscribeToUser,
-} from "@/shared/api/firebase/firestore";
-import type { User } from "@/shared/types/user";
+import { subscribeToTyping } from "@/shared/api/firebase/firestore";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
 import { useIsMobile } from "@/shared/composables/useIsMobile";
 import { useUserStore } from "@/entities/user/store/user.store";
 import Avatar from "primevue/avatar";
 import Button from "primevue/button";
+import Skeleton from "primevue/skeleton";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
 import Drawer from "primevue/drawer";
 import GroupChatInfo from "@/features/chat-actions/ui/GroupChatInfo.vue";
@@ -24,15 +21,36 @@ const userStore = useUserStore();
 const { isMobile } = useIsMobile();
 const now = useGlobalNow(30000);
 
-let unsubscribeUser: (() => void) | null = null;
 let unsubscribeTyping: (() => void) | null = null;
-const otherUser = ref<User | null>(null);
 const typingUsers = ref<string[]>([]);
 const isInfoVisible = ref(false);
 const isUserViewVisible = ref(false);
 
 const chat = computed(() => chatStore.activeChat);
 const isGroup = computed(() => chat.value?.type === "group");
+
+const otherUserId = computed(() => {
+  if (!chat.value || chat.value.type !== "direct") {
+    return null;
+  }
+
+  return (
+    chat.value.participants.find((id) => id !== userStore.userId) || null
+  );
+});
+
+const otherUser = computed(() => {
+  if (!otherUserId.value) return null;
+
+  return chatStore.chatParticipants.get(otherUserId.value) || null;
+});
+
+const isHeaderProfileReady = computed(() => {
+  if (!chat.value) return false;
+  if (isGroup.value) return true;
+
+  return chatStore.isParticipantProfileReady(otherUserId.value);
+});
 
 const openChatInformation = () => {
   if (isGroup.value) {
@@ -55,7 +73,15 @@ const chatName = computed(() => {
     return "";
   }
 
-  return chatStore.otherUserName(chat.value);
+  if (isGroup.value) {
+    return chatStore.otherUserName(chat.value);
+  }
+
+  return (
+    otherUser.value?.displayName ||
+    otherUser.value?.email ||
+    chatStore.otherUserName(chat.value)
+  );
 });
 
 const isOnline = computed(() => {
@@ -77,14 +103,6 @@ const participantCount = computed(() => {
   if (!chat.value) return 0;
 
   return chatStore.getParticipantCount(chat.value.id);
-});
-
-const otherUserId = computed(() => {
-  if (!chat.value || chat.value.type !== "direct") {
-    return null;
-  }
-
-  return chatStore.getOtherUser(chat.value)?.id || null;
 });
 
 const isTyping = computed(() => {
@@ -129,29 +147,6 @@ const getChatPhotoURL = computed(() => {
   return otherUser.value?.photoURL || null;
 });
 
-const setupUserSubscription = () => {
-  if (unsubscribeUser) {
-    unsubscribeUser();
-    unsubscribeUser = null;
-  }
-
-  if (otherUserId.value) {
-    unsubscribeUser = subscribeToUser(otherUserId.value, (user) => {
-      otherUser.value = user;
-    });
-  }
-};
-
-watch(
-  otherUserId,
-  () => {
-    setupUserSubscription();
-  },
-  {
-    immediate: true,
-  },
-);
-
 watch(
   () => chatStore.activeChatId,
   (chatId) => {
@@ -162,6 +157,12 @@ watch(
 
     if (!chatId) return;
 
+    const activeChat = chatStore.activeChat;
+
+    if (activeChat) {
+      void chatStore.ensureParticipants(activeChat.participants);
+    }
+
     unsubscribeTyping = subscribeToTyping(chatId, (users) => {
       typingUsers.value = users.filter((id) => id !== userStore.userId);
     });
@@ -170,8 +171,6 @@ watch(
 );
 
 onUnmounted(() => {
-  unsubscribeUser?.();
-  unsubscribeUser = null;
   unsubscribeTyping?.();
   unsubscribeTyping = null;
 });
@@ -192,6 +191,20 @@ onUnmounted(() => {
             text
           />
           <div
+            v-if="!isHeaderProfileReady"
+            class="flex items-center gap-2 flex-1 min-w-0 md:py-1 py-0.5"
+          >
+            <Skeleton
+              shape="circle"
+              :size="isMobile ? '2.5rem' : '3rem'"
+            />
+            <div class="flex flex-col gap-1 flex-1 min-w-0">
+              <Skeleton height="1.25rem" width="45%" />
+              <Skeleton height="0.875rem" width="30%" />
+            </div>
+          </div>
+          <div
+            v-else
             class="flex items-center gap-2 flex-1 min-w-0"
             :class="{
               'cursor-pointer hover:opacity-80 transition-opacity':

@@ -26,9 +26,24 @@ useSwipeBack(() => {
 });
 
 watch(
-  () => userStore.userId,
-  (userId, prevUserId) => {
-    if (userId && userId !== prevUserId) chatStore.loadChats();
+  () => ({
+    userId: userStore.currentUser?.id ?? null,
+    isAuthLoading: userStore.isLoading,
+  }),
+  ({ userId, isAuthLoading }, prev) => {
+    if (isAuthLoading) return;
+
+    if (!userId) {
+      chatStore.cleanup();
+      return;
+    }
+
+    const authJustReady = !!prev?.isAuthLoading;
+    const userChanged = userId !== prev?.userId;
+
+    if (userChanged || authJustReady) {
+      chatStore.loadChats();
+    }
   },
   { immediate: true },
 );

@@ -173,6 +173,7 @@ const close = () => {
     :visible="isVisible"
     @update:visible="(v) => !v && close()"
     modal
+    dismissable-mask
     header="Переслать сообщение"
     :style="{ width: '26rem' }"
     :breakpoints="{ '640px': '95vw' }"

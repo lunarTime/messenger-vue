@@ -86,7 +86,9 @@ export const useUserStore = defineStore("user", () => {
           }
 
           selfUnsub?.();
-          selfUnsub = subscribeToUser(user.uid, (updated) => {
+          selfUnsub = subscribeToUser(user.uid, (updated, meta) => {
+            if (meta?.fromCache) return;
+
             if (updated) {
               currentUser.value = updated;
               writeUserCache(updated);

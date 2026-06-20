@@ -198,6 +198,7 @@ function onCancel() {
     :visible="visible"
     @update:visible="emit('update:visible', $event)"
     modal
+    dismissable-mask
     header="Редактировать сообщение"
     :style="{ width: '30rem' }"
     :breakpoints="{ '1199px': '75vw', '769px': '90vw' }"

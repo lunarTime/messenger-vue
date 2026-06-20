@@ -245,12 +245,41 @@ const editingAttachments = ref<
 const hasMessages = computed(
   () => messageStore.messages.length > 0 || messageQueue.queue.length > 0,
 );
+
+const areSenderProfilesReady = computed(() => {
+  const myId = userStore.userId;
+
+  if (!myId) return false;
+
+  const senderIds = new Set<string>();
+
+  for (const msg of messageStore.messages) {
+    if (msg.senderId && msg.senderId !== myId) {
+      senderIds.add(msg.senderId);
+    }
+  }
+
+  for (const senderId of senderIds) {
+    if (!chatStore.isParticipantProfileReady(senderId)) {
+      return false;
+    }
+  }
+
+  return true;
+});
+
+const showMessagesSkeleton = computed(
+  () =>
+    messageStore.isLoading ||
+    (hasMessages.value && !areSenderProfilesReady.value),
+);
+
 const showContent = computed(
-  () => !messageStore.isLoading && hasMessages.value,
+  () => !showMessagesSkeleton.value && hasMessages.value,
 );
 
 const showEmptyState = computed(
-  () => !messageStore.isLoading && !hasMessages.value,
+  () => !showMessagesSkeleton.value && !hasMessages.value,
 );
 
 const FAR_FROM_BOTTOM = 700;
@@ -508,7 +537,7 @@ onUnmounted(() => {
 <template>
   <div class="flex-1 min-h-0 relative">
     <div
-      v-if="messageStore.isLoading"
+      v-if="showMessagesSkeleton"
       class="h-full overflow-hidden flex flex-col justify-end gap-1.5 pb-2 pr-2"
     >
       <template v-for="item in skeletonPattern" :key="item.id">
