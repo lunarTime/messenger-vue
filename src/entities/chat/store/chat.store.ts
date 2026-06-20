@@ -3,6 +3,9 @@ import { defineStore } from "pinia";
 import { useUserStore } from "@/entities/user/store/user.store";
 import {
   subscribeToUserChats,
+  getUserChatsFromServer,
+  getChatMemberMetaFromServer,
+  getUserByIdFromServer,
   getUserById,
   subscribeToUser,
   subscribeToChatMemberMeta,
@@ -11,6 +14,7 @@ import {
 } from "@/shared/api/firebase/firestore";
 import type { Timestamp, Unsubscribe } from "firebase/firestore";
 import type { Chat } from "@/shared/types/chat";
+import type { ChatMemberMeta } from "@/shared/api/firebase/firestore";
 import type { User } from "@/shared/types/user";
 import { playIncomingMessageSound } from "@/shared/composables/useNotificationSound";
 import { showMessageNotification } from "@/shared/composables/useBrowserNotifications";
@@ -62,10 +66,15 @@ export const useChatStore = defineStore("chat", () => {
   const pinnedOrderMap = ref<Map<string, number>>(new Map());
   const roleMap = ref<Map<string, string>>(new Map());
   const hiddenAtMap = ref<Map<string, number>>(new Map());
+  const isInitialMemberMetaReady = ref(false);
+  const isInitialParticipantsReady = ref(false);
+  const participantLoadAttempted = ref<Set<string>>(new Set());
   const lastMessageMillisMap = ref<Map<string, number>>(new Map());
   const hasInitialChatsSnapshot = ref(false);
+  const loadingForUserId = ref<string | null>(null);
+  let loadGeneration = 0;
 
-  const myId = computed(() => userStore.userId);
+  const myId = computed(() => userStore.currentUser?.id ?? null);
 
   const activeChat = computed(() => {
     if (temporaryChat.value && activeChatId.value === temporaryChat.value.id) {
@@ -107,6 +116,80 @@ export const useChatStore = defineStore("chat", () => {
 
     return list;
   });
+
+  const isMemberMetaReady = computed(() => isInitialMemberMetaReady.value);
+  const isParticipantsReady = computed(() => isInitialParticipantsReady.value);
+
+  const isParticipantProfileReady = (userId: string | null | undefined) => {
+    if (!userId) return true;
+
+    return (
+      chatParticipants.value.has(userId) ||
+      participantLoadAttempted.value.has(userId)
+    );
+  };
+
+  const isDirectChatProfileReady = (chat: Chat) => {
+    if (chat.type === "group") return true;
+
+    const otherUserId = chat.participants.find((id) => id !== myId.value);
+
+    return isParticipantProfileReady(otherUserId);
+  };
+
+  const _applyMemberMeta = (chatId: string, meta: ChatMemberMeta) => {
+    pinnedMap.value.set(chatId, meta.isPinned);
+
+    if (meta.exists) roleMap.value.set(chatId, meta.role);
+    else roleMap.value.delete(chatId);
+
+    unreadCounts.value.set(chatId, meta.unreadCount);
+
+    if (typeof meta.pinnedOrder === "number") {
+      pinnedOrderMap.value.set(chatId, meta.pinnedOrder);
+    } else {
+      pinnedOrderMap.value.delete(chatId);
+    }
+
+    if (meta.hiddenAt) {
+      hiddenAtMap.value.set(chatId, meta.hiddenAt.toMillis());
+    } else {
+      hiddenAtMap.value.delete(chatId);
+    }
+  };
+
+  const ensureParticipants = async (userIds: string[]) => {
+    const myIdVal = myId.value;
+    if (!myIdVal) return;
+
+    const missing = [
+      ...new Set(
+        userIds.filter(
+          (id) => id && id !== myIdVal && !chatParticipants.value.has(id),
+        ),
+      ),
+    ];
+
+    if (!missing.length) return;
+
+    await Promise.all(
+      missing.map(async (userId) => {
+        try {
+          const user = await getUserByIdFromServer(userId);
+
+          if (user) chatParticipants.value.set(userId, user);
+        } catch {
+          console.error(
+            `Failed to load participant profile for user ${userId}`,
+          );
+        } finally {
+          participantLoadAttempted.value = new Set(
+            participantLoadAttempted.value,
+          ).add(userId);
+        }
+      }),
+    );
+  };
 
   const _setLastStatus = (chatId: string, status: "sent" | "read" | null) => {
     const next = new Map(lastMessageStatuses.value);
@@ -183,19 +266,54 @@ export const useChatStore = defineStore("chat", () => {
     _recomputeLastStatus(chat);
   };
 
-  const loadChats = () => {
-    const myIdVal = myId.value;
+  const loadChats = async () => {
+    const myIdVal = userStore.currentUser?.id;
     if (!myIdVal) {
       return;
     }
 
+    const generation = ++loadGeneration;
+    const loadStartedAt = Date.now();
+
     if (unsubscribeChats.value) {
       unsubscribeChats.value();
+      unsubscribeChats.value = null;
     }
 
+    chats.value = [];
+    chatParticipants.value.clear();
+    participantLoadAttempted.value = new Set();
+    isInitialMemberMetaReady.value = false;
+    isInitialParticipantsReady.value = false;
     isLoading.value = true;
+    isInitialized.value = false;
+    hasInitialChatsSnapshot.value = false;
+    loadingForUserId.value = myIdVal;
 
-    unsubscribeChats.value = subscribeToUserChats(myIdVal, (loadedChats) => {
+    const isStale = () =>
+      generation !== loadGeneration ||
+      loadingForUserId.value !== myIdVal ||
+      userStore.currentUser?.id !== myIdVal;
+
+    const finalizeInitialLoad = (loadedChats: Chat[]) => {
+      if (isStale()) return;
+
+      isLoading.value = false;
+      isInitialized.value = true;
+      hasInitialChatsSnapshot.value = true;
+
+      const saved = sessionStorage.getItem(ACTIVE_CHAT_KEY);
+
+      if (saved && loadedChats.some((c) => c.id === saved)) {
+        activeChatId.value = saved;
+      } else if (saved && !loadedChats.some((c) => c.id === saved)) {
+        sessionStorage.removeItem(ACTIVE_CHAT_KEY);
+      }
+    };
+
+    const applyChats = (loadedChats: Chat[]) => {
+      if (isStale()) return;
+
       if (hasInitialChatsSnapshot.value) {
         for (const chat of loadedChats) {
           const lastMsg = chat.lastMessage;
@@ -258,8 +376,6 @@ export const useChatStore = defineStore("chat", () => {
         if (millis) lastMessageMillisMap.value.set(chat.id, millis);
       }
 
-      hasInitialChatsSnapshot.value = true;
-
       chats.value = loadedChats;
 
       const loadedChatIds = new Set(loadedChats.map((c) => c.id));
@@ -288,23 +404,9 @@ export const useChatStore = defineStore("chat", () => {
       for (const chat of loadedChats) {
         if (!memberMetaSubscriptions.value.has(chat.id)) {
           const unsub = subscribeToChatMemberMeta(chat.id, myIdVal, (meta) => {
-            pinnedMap.value.set(chat.id, meta.isPinned);
+            if (meta.fromCache) return;
 
-            if (meta.exists) roleMap.value.set(chat.id, meta.role);
-
-            unreadCounts.value.set(chat.id, meta.unreadCount);
-
-            if (typeof meta.pinnedOrder === "number") {
-              pinnedOrderMap.value.set(chat.id, meta.pinnedOrder);
-            } else {
-              pinnedOrderMap.value.delete(chat.id);
-            }
-
-            if (meta.hiddenAt) {
-              hiddenAtMap.value.set(chat.id, meta.hiddenAt.toMillis());
-            } else {
-              hiddenAtMap.value.delete(chat.id);
-            }
+            _applyMemberMeta(chat.id, meta);
           });
           memberMetaSubscriptions.value.set(chat.id, unsub);
         }
@@ -322,7 +424,9 @@ export const useChatStore = defineStore("chat", () => {
       for (const userId of participantIds) {
         if (userSubscriptions.value.has(userId)) continue;
 
-        const unsub = subscribeToUser(userId, (user) => {
+        const unsub = subscribeToUser(userId, (user, meta) => {
+          if (meta?.fromCache) return;
+
           if (user) chatParticipants.value.set(userId, user);
           else chatParticipants.value.delete(userId);
         });
@@ -337,18 +441,121 @@ export const useChatStore = defineStore("chat", () => {
           chatParticipants.value.delete(userId);
         }
       }
+    };
 
-      isLoading.value = false;
-      isInitialized.value = true;
+    const preloadMemberMeta = async (loadedChats: Chat[]) => {
+      if (!loadedChats.length) {
+        isInitialMemberMetaReady.value = true;
 
-      const saved = sessionStorage.getItem(ACTIVE_CHAT_KEY);
-
-      if (saved && loadedChats.some((c) => c.id === saved)) {
-        activeChatId.value = saved;
-      } else if (saved && !loadedChats.some((c) => c.id === saved)) {
-        sessionStorage.removeItem(ACTIVE_CHAT_KEY);
+        return;
       }
-    });
+
+      await Promise.all(
+        loadedChats.map(async (chat) => {
+          if (isStale()) return;
+
+          try {
+            const meta = await getChatMemberMetaFromServer(chat.id, myIdVal);
+
+            if (isStale()) return;
+
+            _applyMemberMeta(chat.id, meta);
+          } catch {
+            if (isStale()) return;
+          }
+        }),
+      );
+
+      if (!isStale()) {
+        isInitialMemberMetaReady.value = true;
+      }
+    };
+
+    const collectParticipantIds = (loadedChats: Chat[]) => {
+      const ids = new Set<string>();
+
+      for (const chat of loadedChats) {
+        for (const id of chat.participants) {
+          if (id !== myIdVal) ids.add(id);
+        }
+      }
+
+      return [...ids];
+    };
+
+    const preloadParticipants = async (loadedChats: Chat[]) => {
+      const participantIds = collectParticipantIds(loadedChats);
+
+      if (!participantIds.length) {
+        isInitialParticipantsReady.value = true;
+        return;
+      }
+
+      await ensureParticipants(participantIds);
+
+      if (!isStale()) {
+        isInitialParticipantsReady.value = true;
+      }
+    };
+
+    const completeInitialLoad = async (loadedChats: Chat[]) => {
+      applyChats(loadedChats);
+
+      await Promise.all([
+        preloadMemberMeta(loadedChats),
+        preloadParticipants(loadedChats),
+      ]);
+
+      if (isStale()) return;
+
+      finalizeInitialLoad(loadedChats);
+    };
+
+    let hasServerData = false;
+
+    try {
+      const initialChats = await getUserChatsFromServer(myIdVal);
+
+      if (isStale()) return;
+
+      await completeInitialLoad(initialChats);
+
+      hasServerData = true;
+    } catch {
+      console.error("Failed to load initial chats");
+    }
+
+    if (isStale()) return;
+
+    unsubscribeChats.value = subscribeToUserChats(
+      myIdVal,
+      (loadedChats, meta) => {
+        if (isStale()) return;
+
+        if (!isInitialized.value) {
+          const canUseCacheFallback =
+            !hasServerData &&
+            meta.fromCache &&
+            Date.now() - loadStartedAt > 3000;
+
+          const canUseSnapshot = !meta.fromCache || canUseCacheFallback;
+
+          if (!canUseSnapshot) return;
+
+          void completeInitialLoad(loadedChats);
+
+          if (!meta.fromCache) hasServerData = true;
+
+          return;
+        }
+
+        if (meta.fromCache && hasServerData) return;
+
+        applyChats(loadedChats);
+
+        if (!meta.fromCache) hasServerData = true;
+      },
+    );
   };
 
   const selectChat = (chatId: string) => {
@@ -403,7 +610,9 @@ export const useChatStore = defineStore("chat", () => {
           chatParticipants.value.set(userId, user);
 
           if (!userSubscriptions.value.has(userId)) {
-            const unsubscribe = subscribeToUser(userId, (updatedUser) => {
+            const unsubscribe = subscribeToUser(userId, (updatedUser, meta) => {
+              if (meta?.fromCache) return;
+
               if (updatedUser) {
                 chatParticipants.value.set(userId, updatedUser);
               }
@@ -487,6 +696,8 @@ export const useChatStore = defineStore("chat", () => {
   };
 
   const cleanup = () => {
+    loadGeneration++;
+
     if (unsubscribeChats.value) {
       unsubscribeChats.value();
       unsubscribeChats.value = null;
@@ -504,13 +715,18 @@ export const useChatStore = defineStore("chat", () => {
     pinnedMap.value.clear();
     pinnedOrderMap.value.clear();
     hiddenAtMap.value.clear();
+    isInitialMemberMetaReady.value = false;
+    isInitialParticipantsReady.value = false;
     lastMessageMillisMap.value.clear();
     hasInitialChatsSnapshot.value = false;
     chats.value = [];
     activeChatId.value = null;
     sessionStorage.removeItem(ACTIVE_CHAT_KEY);
     chatParticipants.value.clear();
+    participantLoadAttempted.value = new Set();
     temporaryChat.value = null;
+    loadingForUserId.value = null;
+    isLoading.value = true;
     isInitialized.value = false;
   };
 
@@ -571,6 +787,10 @@ export const useChatStore = defineStore("chat", () => {
     chatParticipants,
     isLoading,
     isInitialized,
+    isMemberMetaReady,
+    isParticipantsReady,
+    isParticipantProfileReady,
+    isDirectChatProfileReady,
     visibleChats,
     temporaryChat,
     lastMessageStatuses,
@@ -591,6 +811,7 @@ export const useChatStore = defineStore("chat", () => {
     isChatAdmin,
     getParticipantCount,
     reorderPinnedChats,
+    ensureParticipants,
     cleanup,
   };
 });
