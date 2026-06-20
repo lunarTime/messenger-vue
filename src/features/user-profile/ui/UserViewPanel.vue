@@ -7,6 +7,7 @@ import { useChatActions } from "@/features/chat-actions/model/useChatActions";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
 import Avatar from "primevue/avatar";
 import Button from "primevue/button";
+import Skeleton from "primevue/skeleton";
 
 const props = defineProps<{ userId: string | null }>();
 
