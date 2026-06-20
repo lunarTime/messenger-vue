@@ -98,7 +98,9 @@ const setupSubscriptions = () => {
 
       newMembers.forEach((m) => {
         if (!memberSubscriptions.has(m.userId)) {
-          const unsub = subscribeToUser(m.userId, (userData) => {
+          const unsub = subscribeToUser(m.userId, (userData, meta) => {
+            if (meta?.fromCache) return;
+
             if (userData) {
               participantsData.value.set(m.userId, userData);
             }
