@@ -1,5 +1,8 @@
 import { ref, computed, watch, onUnmounted } from "vue";
-import { subscribeToUser } from "@/shared/api/firebase/firestore";
+import {
+  getUserByIdFromServer,
+  subscribeToUser,
+} from "@/shared/api/firebase/firestore";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
@@ -23,9 +26,25 @@ export function useUserView(userId: () => string | null) {
 
     if (!id) return;
 
-    unsub = subscribeToUser(id, (u) => {
-      user.value = u;
-    });
+    void (async () => {
+      try {
+        const serverUser = await getUserByIdFromServer(id);
+
+        if (userId() === id) {
+          user.value = serverUser;
+        }
+      } catch {
+        console.error(`Failed to load user profile for user ${id}`);
+      }
+
+      if (userId() !== id) return;
+
+      unsub = subscribeToUser(id, (u, meta) => {
+        if (meta?.fromCache) return;
+
+        user.value = u;
+      });
+    })();
   };
 
   watch(userId, subscribe, { immediate: true });
