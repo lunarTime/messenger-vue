@@ -119,6 +119,7 @@ const close = () => {
     @update:visible="emit('update:visible', $event)"
     header="Редактировать группу"
     :modal="true"
+    dismissable-mask
     :draggable="false"
     class="w-full max-w-md mx-4"
     @hide="close"
