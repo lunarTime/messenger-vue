@@ -232,11 +232,19 @@ export const useMessageStore = defineStore("messages", () => {
       chatId,
       ({ messages: loaded, oldestCursor: cursor, hasMore: more }) => {
         messages.value = loaded;
-        isLoading.value = false;
         oldestCursor.value = cursor;
         hasMore.value = more;
         _attachLegacyDeletedForListeners(chatId, loaded);
         _markAllAsReadIfActive();
+
+        const myId = userStore.userId;
+        const senderIds = loaded
+          .map((message) => message.senderId)
+          .filter((id): id is string => !!id && id !== myId);
+
+        void chatStore.ensureParticipants(senderIds).finally(() => {
+          isLoading.value = false;
+        });
       },
       userStore.userId || undefined,
       effectiveClearedAtMillis.value,
