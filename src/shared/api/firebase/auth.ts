@@ -60,6 +60,7 @@ export async function signInWithGoogle() {
         displayName: user.displayName || "",
         firstName,
         lastName,
+        jobTitle: "",
         photoURL: user.photoURL || null,
         isOnline: true,
         createdAt: serverTimestamp(),
