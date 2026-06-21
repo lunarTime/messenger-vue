@@ -464,7 +464,7 @@ onUnmounted(() => window.removeEventListener("keydown", onGlobalKeyDown));
       </div>
     </Transition>
 
-    <div class="flex gap-2">
+    <div class="flex gap-2 items-end">
       <Transition
         enter-active-class="transition-all duration-350 ease-out"
         enter-from-class="opacity-0 translate-y-2 scale-75"
@@ -614,6 +614,7 @@ onUnmounted(() => window.removeEventListener("keydown", onGlobalKeyDown));
         @click="sendMessage"
         icon="pi pi-send"
         size="large"
+        class="h-fit"
         :aria-label="isSending ? 'Отправка...' : 'Отправить сообщение'"
       />
     </div>
