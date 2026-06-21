@@ -147,7 +147,9 @@ const close = () => {
               />
               <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">{{ user.displayName }}</div>
-                <div class="text-xs opacity-60 truncate">{{ user.email }}</div>
+                <div class="text-xs opacity-60 truncate">
+                  {{ user.jobTitle ? `${user.jobTitle} · ${user.email}` : user.email }}
+                </div>
               </div>
             </div>
           </div>
