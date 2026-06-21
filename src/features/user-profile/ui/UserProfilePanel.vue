@@ -21,6 +21,7 @@ const { isDark, toggleTheme } = useTheme();
 const {
   user,
   displayName,
+  jobTitle,
   photoPreview,
   photoFile,
   isSaving,
@@ -152,6 +153,17 @@ const handleLogout = () => {
         />
       </div>
 
+      <div class="flex flex-col gap-2">
+        <label for="profileJobTitle" class="font-medium text-sm">Должность</label>
+        <InputText
+          id="profileJobTitle"
+          v-model="jobTitle"
+          placeholder="Например: Frontend-разработчик"
+          fluid
+          :maxlength="100"
+        />
+      </div>
+
       <div class="flex flex-col gap-1">
         <span class="font-medium text-sm">Email</span>
         <span class="text-sm opacity-70 break-all">
@@ -169,7 +181,8 @@ const handleLogout = () => {
         :disabled="
           !displayName.trim() ||
           (!photoFile &&
-            displayName.trim() === (user?.displayName ?? '').trim())
+            displayName.trim() === (user?.displayName ?? '').trim() &&
+            jobTitle.trim() === (user?.jobTitle ?? '').trim())
         "
         @click="handleSave"
       />
