@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useMessageCompose } from "@/shared/composables/useMessageCompose";
-import {
-  getOrCreateDirectChat,
-  sendMessagesBatch,
-} from "@/shared/api/firebase/firestore";
+import { sendMessagesBatch } from "@/shared/api/firebase/firestore";
 import { sanitizeText } from "@/shared/lib/sanitization/sanitizer";
 import { VALIDATION_CONFIG } from "@/shared/config/validation.config";
 import { getAvatarColor } from "@/shared/utils/avatarColors";
@@ -15,7 +12,12 @@ import Dialog from "primevue/dialog";
 import Avatar from "primevue/avatar";
 import Button from "primevue/button";
 import InputText from "primevue/inputtext";
+import Checkbox from "primevue/checkbox";
 import { useToast } from "primevue/usetoast";
+import type {
+  Message,
+  MessageAttachment,
+} from "@/shared/types/message";
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
@@ -24,6 +26,7 @@ const toast = useToast();
 
 const isForwarding = ref(false);
 const searchQuery = ref("");
+const selectedChatIds = ref<Set<string>>(new Set());
 
 const isVisible = computed(
   () => !!messageCompose.forwardContext || !!messageCompose.forwardManyContext,
@@ -32,7 +35,7 @@ const isVisible = computed(
 const filteredChats = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
 
-  return chatStore.chats.filter((chat) => {
+  return chatStore.visibleChats.filter((chat) => {
     const name = getChatName(chat).toLowerCase();
 
     return !q || name.includes(q);
@@ -63,72 +66,126 @@ function getChatAvatarColor(chat: Chat): string {
   return getAvatarColor(chat.id);
 }
 
-const resolveTargetChatId = async (targetChat: Chat): Promise<string> => {
-  if (targetChat.type === "direct") {
-    const otherId = targetChat.participants.find(
-      (id) => id !== userStore.userId,
-    );
+const selectedChats = computed(() => {
+  if (!selectedChatIds.value.size) return [];
 
-    if (otherId) {
-      return getOrCreateDirectChat(userStore.userId!, otherId);
-    }
+  return chatStore.visibleChats.filter((chat) =>
+    selectedChatIds.value.has(chat.id),
+  );
+});
+
+const resolveSenderName = (message: Message): string => {
+  if (message.forwardedFrom) return message.forwardedFrom;
+
+  if (message.senderId === userStore.userId) {
+    return userStore.currentUser?.displayName || "Пользователь";
   }
-  return targetChat.id;
+
+  return (
+    chatStore.chatParticipants.get(message.senderId)?.displayName ||
+    "Пользователь"
+  );
 };
 
-const handleForward = async (targetChat: Chat) => {
-  if (!userStore.userId) return;
+const messagesToForward = computed<
+  {
+    text: string;
+    forwardedFrom?: string;
+    attachments?: MessageAttachment[];
+  }[]
+>(() => {
+  const messages = messageCompose.forwardManyContext;
+
+  if (messages) {
+    return messages
+      .filter((message) => !message.isDeleted)
+      .map((message) => ({
+        text: sanitizeText(message.text, {
+          maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+        }),
+        forwardedFrom: resolveSenderName(message),
+        attachments: message.attachments,
+      }));
+  }
+
+  const context = messageCompose.forwardContext;
+
+  if (!context || context.message.isDeleted) return [];
+
+  return [
+    {
+      text: sanitizeText(context.message.text, {
+        maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
+      }),
+      forwardedFrom: context.message.forwardedFrom || context.senderName,
+      attachments: context.message.attachments,
+    },
+  ];
+});
+
+const toggleChat = (chatId: string) => {
+  if (isForwarding.value) return;
+
+  const next = new Set(selectedChatIds.value);
+
+  if (next.has(chatId)) next.delete(chatId);
+  else next.add(chatId);
+
+  selectedChatIds.value = next;
+};
+
+const handleForward = async () => {
+  const senderId = userStore.userId;
+  const targets = selectedChats.value;
+  const messages = messagesToForward.value;
+
+  if (!senderId || !targets.length || !messages.length) return;
 
   isForwarding.value = true;
 
   try {
-    const targetChatId = await resolveTargetChatId(targetChat);
+    const results: PromiseSettledResult<void>[] = [];
 
-    let messagesToSend: {
-      text: string;
-      forwardedFrom?: string;
-      attachments?: import("@/shared/types/message").MessageAttachment[];
-    }[];
+    for (let index = 0; index < targets.length; index += 4) {
+      const chunk = targets.slice(index, index + 4);
+      const chunkResults = await Promise.allSettled(
+        chunk.map((chat) => sendMessagesBatch(chat.id, senderId, messages)),
+      );
 
-    if (messageCompose.forwardManyContext) {
-      messagesToSend = messageCompose.forwardManyContext.map((msg) => ({
-        text: sanitizeText(msg.text, {
-          maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
-        }),
-        forwardedFrom:
-          msg.senderId === userStore.userId
-            ? userStore.currentUser?.displayName || "Пользователь"
-            : chatStore.chatParticipants.get(msg.senderId)?.displayName ||
-              "Пользователь",
-        attachments: msg.attachments,
-      }));
-    } else {
-      const ctx = messageCompose.forwardContext;
-
-      if (!ctx) return;
-
-      messagesToSend = [
-        {
-          text: sanitizeText(ctx.message.text, {
-            maxLength: VALIDATION_CONFIG.MESSAGE.MAX_LENGTH,
-          }),
-          forwardedFrom: ctx.senderName,
-          attachments: ctx.message.attachments,
-        },
-      ];
+      results.push(...chunkResults);
     }
 
-    await sendMessagesBatch(targetChatId, userStore.userId, messagesToSend);
+    const failedChats = targets.filter(
+      (_, index) => results[index]?.status === "rejected",
+    );
 
-    messageCompose.clearForward();
-    searchQuery.value = "";
+    if (failedChats.length) {
+      selectedChatIds.value = new Set(failedChats.map((chat) => chat.id));
+      const allFailed = failedChats.length === targets.length;
+
+      toast.add({
+        severity: allFailed ? "error" : "warn",
+        summary: allFailed ? "Ошибка" : "Переслано частично",
+        detail: allFailed
+          ? "Не удалось переслать сообщения"
+          : `Не удалось переслать в ${failedChats.length} из ${targets.length} чатов`,
+        life: VALIDATION_CONFIG.TOAST.LIFE_TIME,
+      });
+
+      return;
+    }
 
     toast.add({
       severity: "success",
       summary: "Переслано",
-      detail: `Переслано в чат «${getChatName(targetChat)}»`,
+      detail:
+        targets.length === 1
+          ? `Переслано в чат «${getChatName(targets[0] as Chat)}»`
+          : `Переслано в ${targets.length} чатов`,
       life: VALIDATION_CONFIG.TOAST.LIFE_TIME,
     });
+
+    close();
   } catch {
     toast.add({
       severity: "error",
@@ -165,15 +222,35 @@ const forwardPreviewText = computed(() => {
 const close = () => {
   messageCompose.clearForward();
   searchQuery.value = "";
+  selectedChatIds.value = new Set();
 };
+
+watch(isVisible, (visible) => {
+  if (!visible) selectedChatIds.value = new Set();
+});
+
+watch(
+  () => chatStore.visibleChats.map((chat) => chat.id),
+  (chatIds) => {
+    const available = new Set(chatIds);
+    const next = new Set(
+      [...selectedChatIds.value].filter((chatId) => available.has(chatId)),
+    );
+
+    if (next.size !== selectedChatIds.value.size) {
+      selectedChatIds.value = next;
+    }
+  },
+);
 </script>
 
 <template>
   <Dialog
     :visible="isVisible"
-    @update:visible="(v) => !v && close()"
+    @update:visible="(v) => !v && !isForwarding && close()"
     modal
-    dismissable-mask
+    :dismissable-mask="!isForwarding"
+    :closable="!isForwarding"
     header="Переслать сообщение"
     :style="{ width: '26rem' }"
     :breakpoints="{ '640px': '95vw' }"
@@ -217,9 +294,19 @@ const close = () => {
           v-for="chat in filteredChats"
           :key="chat.id"
           class="flex items-center gap-3 p-2 rounded-xl cursor-pointer hover:bg-(--p-primary-color)/10 transition-colors"
-          :class="{ 'opacity-60 pointer-events-none': isForwarding }"
-          @click="handleForward(chat)"
+          :class="{
+            'opacity-60 pointer-events-none': isForwarding,
+            'bg-(--p-primary-color)/10': selectedChatIds.has(chat.id),
+          }"
+          @click="toggleChat(chat.id)"
         >
+          <Checkbox
+            :model-value="selectedChatIds.has(chat.id)"
+            binary
+            :disabled="isForwarding"
+            :aria-label="`Выбрать чат ${getChatName(chat)}`"
+            @click.stop="toggleChat(chat.id)"
+          />
           <Avatar
             :image="getChatPhotoURL(chat) ?? undefined"
             :label="
@@ -256,12 +343,26 @@ const close = () => {
     </div>
 
     <template #footer>
-      <Button
-        label="Отмена"
-        severity="secondary"
-        @click="close"
-        :disabled="isForwarding"
-      />
+      <div class="flex items-center justify-between gap-3 w-full">
+        <span class="text-sm opacity-60">
+          Выбрано: {{ selectedChatIds.size }}
+        </span>
+        <div class="flex gap-2">
+          <Button
+            label="Отмена"
+            severity="secondary"
+            @click="close"
+            :disabled="isForwarding"
+          />
+          <Button
+            label="Переслать"
+            icon="pi pi-send"
+            :loading="isForwarding"
+            :disabled="selectedChatIds.size === 0 || messagesToForward.length === 0"
+            @click="handleForward"
+          />
+        </div>
+      </div>
     </template>
   </Dialog>
 </template>
