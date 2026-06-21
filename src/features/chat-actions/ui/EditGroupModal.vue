@@ -96,7 +96,7 @@ const handleUpdate = async () => {
 
     emit("updated");
     close();
-  } catch (error) {
+  } catch {
     toast.add({
       severity: "error",
       summary: "Ошибка",

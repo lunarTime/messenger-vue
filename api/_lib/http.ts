@@ -66,3 +66,11 @@ export function getClientIp(req: HandlerReq): string {
 
   return req.socket?.remoteAddress || "unknown";
 }
+
+export function getErrorCode(error: unknown): string {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return "";
+  }
+
+  return typeof error.code === "string" ? error.code : "";
+}

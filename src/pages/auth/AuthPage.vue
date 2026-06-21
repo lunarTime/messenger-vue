@@ -3,6 +3,7 @@
     import { useAuthNavigation } from '@/entities/user/model/useAuthNavigation'
     import { useTheme } from '@/shared/composables/useTheme'
     import { signInWithGoogle } from '@/shared/api/firebase/auth'
+    import { getErrorMessage } from '@/shared/lib/errors/error'
     import type { AuthType } from '@/shared/types/auth'
     import LoginForm from '@/pages/auth/ui/LoginForm.vue'
     import RegisterForm from '@/pages/auth/ui/RegisterForm.vue'
@@ -30,10 +31,10 @@
         try {
             await signInWithGoogle()
             await navigateAfterAuth()
-        } catch (error: any) {
-            console.error('Ошибка авторизации через Google:', error)
+        } catch (caughtError) {
+            console.error('Ошибка авторизации через Google:', caughtError)
 
-            error.value = error.message
+            error.value = getErrorMessage(caughtError, 'Ошибка авторизации через Google')
         } finally {
             isLoading.value = false
         }

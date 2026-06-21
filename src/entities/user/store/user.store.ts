@@ -37,7 +37,9 @@ function writeUserCache(user: User) {
     };
 
     localStorage.setItem(USER_CACHE_KEY, JSON.stringify(cache));
-  } catch {}
+  } catch {
+    return;
+  }
 }
 
 function clearUserCache() {
@@ -94,7 +96,7 @@ export const useUserStore = defineStore("user", () => {
               writeUserCache(updated);
             }
           });
-        } catch (error) {
+        } catch {
           currentUser.value = null;
         }
       } else {
@@ -128,7 +130,7 @@ export const useUserStore = defineStore("user", () => {
       } else {
         searchResults.value = results;
       }
-    } catch (error) {
+    } catch {
       searchResults.value = [];
     } finally {
       isSearching.value = false;

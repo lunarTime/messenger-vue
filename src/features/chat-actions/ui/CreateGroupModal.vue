@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { createGroupChat } from "@/shared/api/firebase/firestore";
@@ -65,7 +65,11 @@ const clearGroupPhoto = () => {
 };
 
 const handleCreate = async () => {
-  if (!groupName.value || selectedUsers.value.length === 0 || !userStore.userId)
+  const participantIds = selectedUsers.value.filter((userId) =>
+    activeInterlocutorIds.value.has(userId),
+  );
+
+  if (!groupName.value || participantIds.length === 0 || !userStore.userId)
     return;
 
   isCreating.value = true;
@@ -89,7 +93,7 @@ const handleCreate = async () => {
     const chatId = await createGroupChat(
       userStore.userId,
       groupName.value,
-      selectedUsers.value,
+      participantIds,
       photoURL || undefined,
     );
 
@@ -102,7 +106,7 @@ const handleCreate = async () => {
 
     emit("created", chatId);
     close();
-  } catch (error) {
+  } catch {
     toast.add({
       severity: "error",
       summary: "Ошибка",
@@ -114,10 +118,31 @@ const handleCreate = async () => {
   }
 };
 
-const interlocutors = computed<User[]>(() => {
-  const users = Array.from(chatStore.chatParticipants.values()) as User[];
+const activeInterlocutorIds = computed(() => {
+  const currentUserId = userStore.userId;
 
-  return users.filter((u) => u.id !== userStore.userId);
+  if (!currentUserId) return new Set<string>();
+
+  return new Set(
+    chatStore.visibleChats
+      .filter((chat) => chat.type === "direct")
+      .map((chat) =>
+        chat.participants.find((userId) => userId !== currentUserId),
+      )
+      .filter((userId): userId is string => Boolean(userId)),
+  );
+});
+
+const interlocutors = computed<User[]>(() =>
+  [...activeInterlocutorIds.value]
+    .map((userId) => chatStore.chatParticipants.get(userId))
+    .filter((user): user is User => Boolean(user)),
+);
+
+watch(activeInterlocutorIds, (userIds) => {
+  selectedUsers.value = selectedUsers.value.filter((userId) =>
+    userIds.has(userId),
+  );
 });
 
 const toggleUser = (userId: string) => {
@@ -251,7 +276,9 @@ const close = () => {
               />
               <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">{{ user.displayName }}</div>
-                <div class="text-xs opacity-60 truncate">{{ user.email }}</div>
+                <div class="text-xs opacity-60 truncate">
+                  {{ user.jobTitle ? `${user.jobTitle} · ${user.email}` : user.email }}
+                </div>
               </div>
             </div>
           </div>

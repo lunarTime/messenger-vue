@@ -9,6 +9,7 @@ export function useUserProfile() {
   const toast = useToast();
 
   const displayName = ref("");
+  const jobTitle = ref("");
   const photoFile = ref<File | null>(null);
   const photoBlobUrl = ref<string | null>(null);
   const isSaving = ref(false);
@@ -21,6 +22,7 @@ export function useUserProfile() {
 
   const init = () => {
     displayName.value = user.value?.displayName ?? "";
+    jobTitle.value = user.value?.jobTitle ?? "";
     photoBlobUrl.value = null;
     photoFile.value = null;
   };
@@ -51,6 +53,7 @@ export function useUserProfile() {
 
       await userStore.updateProfile({
         displayName: displayName.value.trim(),
+        jobTitle: jobTitle.value.trim(),
         photoURL,
       });
 
@@ -82,6 +85,7 @@ export function useUserProfile() {
   return {
     user,
     displayName,
+    jobTitle,
     photoPreview,
     photoFile,
     isSaving,

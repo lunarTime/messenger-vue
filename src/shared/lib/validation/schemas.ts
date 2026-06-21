@@ -1,12 +1,9 @@
 import { z } from 'zod'
 import { VALIDATION_CONFIG, XSS_PATTERNS, INJECTION_PATTERNS } from '@/shared/config/validation.config'
+import { hasControlCharacters } from '@/shared/lib/string/controlCharacters'
 
 const hasXSS = (val: string): boolean => {
     return XSS_PATTERNS.some(pattern => pattern.test(val))
-}
-
-const hasControlChars = (val: string): boolean => {
-    return /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(val)
 }
 
 const hasInjection = (val: string): boolean => {
@@ -25,7 +22,7 @@ export const MessageSchema = baseTextSchema
     .refine(val => !hasXSS(val), {
         message: 'Обнаружен недопустимый контент (XSS)'
     })
-    .refine(val => !hasControlChars(val), {
+    .refine(val => !hasControlCharacters(val), {
         message: 'Обнаружены недопустимые управляющие символы'
     })
 
@@ -35,7 +32,7 @@ export const SearchQuerySchema = baseTextSchema
     .refine(val => !hasXSS(val), {
         message: 'Обнаружен недопустимый контент (XSS)'
     })
-    .refine(val => !hasControlChars(val), {
+    .refine(val => !hasControlCharacters(val), {
         message: 'Обнаружены недопустимые символы'
     })
     .refine(val => !hasInjection(val), {
@@ -64,6 +61,6 @@ export const DisplayNameSchema = baseTextSchema
     .refine(val => !hasXSS(val), {
         message: 'Обнаружен недопустимый контент'
     })
-    .refine(val => !hasControlChars(val), {
+    .refine(val => !hasControlCharacters(val), {
         message: 'Обнаружены недопустимые символы'
     })

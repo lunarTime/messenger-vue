@@ -6,6 +6,11 @@ import { useAuthNavigation } from "@/entities/user/model/useAuthNavigation";
 import { loginWithEmail } from "@/shared/api/firebase/auth";
 import { confirmPasswordReset, requestPasswordReset } from "@/shared/api/otp";
 import type { LoginFormData } from "@/shared/types/auth";
+import {
+  getErrorCode,
+  getErrorMessage,
+  getRetryAfter,
+} from "@/shared/lib/errors/error";
 import Button from "primevue/button";
 import Message from "primevue/message";
 import FloatLabel from "primevue/floatlabel";
@@ -98,8 +103,8 @@ async function handleEmailLogin() {
   try {
     await loginWithEmail(formData.email, formData.password);
     await navigateAfterAuthFast();
-  } catch (e: any) {
-    error.value = getLoginErrorMessage(e.code);
+  } catch (caughtError) {
+    error.value = getLoginErrorMessage(getErrorCode(caughtError));
   } finally {
     isLoading.value = false;
   }
@@ -123,10 +128,15 @@ async function handleResetRequest() {
       "Если этот email зарегистрирован, мы отправили на него код подтверждения. Не пришло письмо? Проверьте папку «Спам».";
 
     startResendCooldown(60);
-  } catch (e: any) {
-    error.value = e?.message || "Не удалось отправить код. Попробуйте позже";
-    if (typeof e?.retryAfter === "number") {
-      startResendCooldown(e.retryAfter);
+  } catch (caughtError) {
+    const retryAfter = getRetryAfter(caughtError);
+
+    error.value = getErrorMessage(
+      caughtError,
+      "Не удалось отправить код. Попробуйте позже",
+    );
+    if (retryAfter !== null) {
+      startResendCooldown(retryAfter);
     }
   } finally {
     isLoading.value = false;
@@ -146,12 +156,14 @@ async function handleResendReset() {
     otpCode.value = "";
 
     startResendCooldown(60);
-  } catch (e: any) {
-    if (typeof e?.retryAfter === "number") {
-      startResendCooldown(e.retryAfter);
+  } catch (caughtError) {
+    const retryAfter = getRetryAfter(caughtError);
+
+    if (retryAfter !== null) {
+      startResendCooldown(retryAfter);
     }
 
-    error.value = e?.message || "Не удалось отправить код";
+    error.value = getErrorMessage(caughtError, "Не удалось отправить код");
   } finally {
     isLoading.value = false;
   }
@@ -203,14 +215,16 @@ async function handlePasswordChange() {
 
     await signInWithCustomToken(auth, customToken);
     await navigateAfterAuthFast();
-  } catch (e: any) {
-    if (e?.message?.toLowerCase().includes("код")) {
+  } catch (caughtError) {
+    const message = getErrorMessage(caughtError, "Не удалось сменить пароль");
+
+    if (message.toLowerCase().includes("код")) {
       otpInvalid.value = true;
       otpCode.value = "";
       step.value = "reset-otp";
     }
 
-    error.value = e?.message || "Не удалось сменить пароль";
+    error.value = message;
   } finally {
     isLoading.value = false;
   }

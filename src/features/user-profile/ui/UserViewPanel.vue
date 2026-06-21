@@ -89,6 +89,9 @@ const getChatPhoto = (chatId: string) => {
           <h2 class="md:text-2xl text-lg font-bold leading-none mb-2">
             {{ user.displayName }}
           </h2>
+          <p v-if="user.jobTitle" class="md:text-sm text-xs opacity-75 mb-1">
+            {{ user.jobTitle }}
+          </p>
           <p class="md:text-sm text-xs opacity-60 mt-0.5">
             {{ isOnline ? "в сети" : "не в сети" }}
           </p>

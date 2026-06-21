@@ -404,7 +404,7 @@ export const useChatStore = defineStore("chat", () => {
       for (const chat of loadedChats) {
         if (!memberMetaSubscriptions.value.has(chat.id)) {
           const unsub = subscribeToChatMemberMeta(chat.id, myIdVal, (meta) => {
-            if (meta.fromCache) return;
+            if (meta.fromCache && !meta.hasPendingWrites) return;
 
             _applyMemberMeta(chat.id, meta);
           });
@@ -538,7 +538,8 @@ export const useChatStore = defineStore("chat", () => {
             meta.fromCache &&
             Date.now() - loadStartedAt > 3000;
 
-          const canUseSnapshot = !meta.fromCache || canUseCacheFallback;
+          const canUseSnapshot =
+            !meta.fromCache || canUseCacheFallback || meta.hasPendingWrites;
 
           if (!canUseSnapshot) return;
 
@@ -549,7 +550,7 @@ export const useChatStore = defineStore("chat", () => {
           return;
         }
 
-        if (meta.fromCache && hasServerData) return;
+        if (meta.fromCache && hasServerData && !meta.hasPendingWrites) return;
 
         applyChats(loadedChats);
 

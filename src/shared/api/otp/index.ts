@@ -35,6 +35,7 @@ export interface VerifyOtpPayload {
   password: string;
   firstName: string;
   lastName: string;
+  jobTitle: string;
 }
 
 export interface SendOtpResult {

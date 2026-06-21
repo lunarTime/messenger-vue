@@ -1,5 +1,6 @@
 import DOMPurify from 'isomorphic-dompurify'
 import type { SanitizeOptions } from '@/shared/types/sanitize'
+import { stripControlCharacters } from '@/shared/lib/string/controlCharacters'
 
 export function sanitizeText(text: string, options: SanitizeOptions = {}): string {
     const { allowBasicHtml = false, maxLength, stripNewlines = false, normalizeSpaces = true } = options
@@ -16,8 +17,7 @@ export function sanitizeText(text: string, options: SanitizeOptions = {}): strin
               KEEP_CONTENT: true
           })
 
-    sanitized = sanitized.replace(/\0/g, '')
-    sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    sanitized = stripControlCharacters(sanitized)
 
     if (stripNewlines) {
         sanitized = sanitized.replace(/[\r\n]+/g, ' ')

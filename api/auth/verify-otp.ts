@@ -5,6 +5,7 @@ import { checkRateLimit } from "../_lib/rateLimit.js";
 import {
   applyCors,
   getClientIp,
+  getErrorCode,
   normalizeEmail,
   type HandlerReq,
   type HandlerRes,
@@ -27,6 +28,7 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
     password?: unknown;
     firstName?: unknown;
     lastName?: unknown;
+    jobTitle?: unknown;
   };
 
   const email = normalizeEmail(body.email);
@@ -38,6 +40,8 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
       : "";
   const lastName =
     typeof body.lastName === "string" ? body.lastName.trim().slice(0, 50) : "";
+  const jobTitle =
+    typeof body.jobTitle === "string" ? body.jobTitle.trim().slice(0, 100) : "";
 
   if (!email) return res.status(400).json({ error: "Некорректный email" });
 
@@ -133,14 +137,14 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
         displayName,
         emailVerified: true,
       });
-    } catch (e: any) {
-      if (e?.code === "auth/email-already-exists") {
+    } catch (caughtError) {
+      if (getErrorCode(caughtError) === "auth/email-already-exists") {
         await ref.delete();
 
         return res.status(409).json({ error: "Email уже зарегистрирован" });
       }
 
-      throw e;
+      throw caughtError;
     }
 
     await db
@@ -152,6 +156,7 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
         displayName,
         firstName,
         lastName: lastName || "",
+        jobTitle,
         photoURL: null,
         isOnline: true,
         createdAt: FieldValue.serverTimestamp(),

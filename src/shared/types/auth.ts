@@ -9,6 +9,7 @@ export interface RegisterFormData {
     password: string
     firstName: string
     lastName: string
+    jobTitle: string
 }
 
 export interface AuthResponse {

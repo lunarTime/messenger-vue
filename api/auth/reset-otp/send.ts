@@ -5,6 +5,7 @@ import { sendPasswordResetEmail } from "../../_lib/mailer.js";
 import {
   applyCors,
   getClientIp,
+  getErrorCode,
   normalizeEmail,
   type HandlerReq,
   type HandlerRes,
@@ -86,8 +87,10 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
       await adminAuth().getUserByEmail(email);
 
       userExists = true;
-    } catch (e: any) {
-      if (e?.code !== "auth/user-not-found") throw e;
+    } catch (caughtError) {
+      if (getErrorCode(caughtError) !== "auth/user-not-found") {
+        throw caughtError;
+      }
     }
 
     if (!userExists) {

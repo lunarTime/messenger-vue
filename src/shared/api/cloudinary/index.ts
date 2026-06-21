@@ -135,7 +135,7 @@ export function uploadFileToCloudinary(
       }
     };
 
-    const onLoadHandler = () => {
+    const onLoadHandler = async () => {
       if (isSettled) return;
 
       isSettled = true;
@@ -145,10 +145,36 @@ export function uploadFileToCloudinary(
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
+
+          if (
+            typeof data.secure_url !== "string" ||
+            (file.size > 0 && (!Number.isFinite(data.bytes) || data.bytes <= 0))
+          ) {
+            reject(new Error("Cloudinary returned an invalid uploaded file"));
+
+            return;
+          }
+
+          if (resourceType === "raw") {
+            const deliveryResponse = await fetch(data.secure_url, {
+              method: "HEAD",
+            });
+
+            if (!deliveryResponse.ok) {
+              const deliveryError =
+                deliveryResponse.headers.get("x-cld-error") ??
+                `HTTP ${deliveryResponse.status}`;
+
+              reject(new Error(`Cloudinary delivery failed: ${deliveryError}`));
+
+              return;
+            }
+          }
+
           const attachment: MessageAttachment = {
             id: crypto.randomUUID(),
             type: attachmentType,
-            url: data.secure_url as string,
+            url: data.secure_url,
             name: file.name,
             size: file.size,
             mimeType: file.type,

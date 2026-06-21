@@ -2,6 +2,7 @@
 import { ref, computed, watch } from "vue";
 import Galleria from "primevue/galleria";
 import Button from "primevue/button";
+import { useToast } from "primevue/usetoast";
 import { downloadFile } from "@/shared/lib/download/download";
 import type { MessageAttachment } from "@/shared/types/message";
 
@@ -14,6 +15,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:visible": [value: boolean];
 }>();
+
+const toast = useToast();
 
 const mediaItems = computed(() =>
   props.attachments.filter((a) => a.type === "image" || a.type === "video"),
@@ -41,12 +44,26 @@ function close() {
   emit("update:visible", false);
 }
 
-function downloadCurrent() {
+function closeOnBackdrop(event: MouseEvent) {
+  if (event.target === event.currentTarget) close();
+}
+
+async function downloadCurrent() {
   const item = mediaItems.value[activeIndex.value];
 
   if (!item) return;
 
-  downloadFile(item.url, item.name);
+  try {
+    await downloadFile(item.url, item.name);
+  } catch (error) {
+    console.error("Ошибка загрузки файла:", error);
+    toast.add({
+      severity: "error",
+      summary: "Загрузка не удалась",
+      detail: error instanceof Error ? error.message : "File is unavailable",
+      life: 5000,
+    });
+  }
 }
 </script>
 
@@ -74,13 +91,14 @@ function downloadCurrent() {
       thumbnailcontent: { class: 'bg-black/40!' },
       items: { class: 'flex-1 overflow-hidden' },
       closeButton: { class: 'hidden' },
-      mask: { class: 'backdrop-blur-xs' },
+      mask: { class: 'backdrop-blur-xs', onClick: closeOnBackdrop },
     }"
     @update:visible="emit('update:visible', $event)"
   >
     <template #item="{ item }">
       <div
         class="relative flex items-center justify-center max-h-[80dvh] h-full overflow-hidden"
+        @click.self="close"
       >
         <img
           v-if="item.type === 'image'"
