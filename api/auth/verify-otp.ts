@@ -27,6 +27,7 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
     password?: unknown;
     firstName?: unknown;
     lastName?: unknown;
+    jobTitle?: unknown;
   };
 
   const email = normalizeEmail(body.email);
@@ -38,6 +39,8 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
       : "";
   const lastName =
     typeof body.lastName === "string" ? body.lastName.trim().slice(0, 50) : "";
+  const jobTitle =
+    typeof body.jobTitle === "string" ? body.jobTitle.trim().slice(0, 100) : "";
 
   if (!email) return res.status(400).json({ error: "Некорректный email" });
 
@@ -152,6 +155,7 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
         displayName,
         firstName,
         lastName: lastName || "",
+        jobTitle,
         photoURL: null,
         isOnline: true,
         createdAt: FieldValue.serverTimestamp(),
