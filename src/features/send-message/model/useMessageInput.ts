@@ -54,7 +54,9 @@ export function useMessageInput(focusFn?: () => void) {
     try {
       await setTypingStatus(chatStore.activeChatId!, userStore.userId!, status);
       isTyping.value = status;
-    } catch {}
+    } catch {
+      isTyping.value = false;
+    }
   };
 
   watch(message, (newValue) => {

@@ -6,6 +6,10 @@ import { auth } from "@/shared/api/firebase";
 import { sendOtp, verifyOtp } from "@/shared/api/otp";
 import { useUserStore } from "@/entities/user/store/user.store";
 import type { RegisterFormData } from "@/shared/types/auth";
+import {
+  getErrorMessage,
+  getRetryAfter,
+} from "@/shared/lib/errors/error";
 import Button from "primevue/button";
 import Message from "primevue/message";
 import FloatLabel from "primevue/floatlabel";
@@ -92,8 +96,11 @@ async function handleRegister() {
 
     startResendCooldown(60);
     void expiresIn;
-  } catch (e: any) {
-    error.value = e?.message || "Не удалось отправить код. Попробуйте позже";
+  } catch (caughtError) {
+    error.value = getErrorMessage(
+      caughtError,
+      "Не удалось отправить код. Попробуйте позже",
+    );
   } finally {
     isLoading.value = false;
   }
@@ -139,10 +146,10 @@ async function handleVerify(code?: string) {
     }
 
     error.value = "Не удалось подтвердить вход. Попробуйте войти вручную";
-  } catch (e: any) {
+  } catch (caughtError) {
     otpInvalid.value = true;
     otpCode.value = "";
-    error.value = e?.message || "Неверный код";
+    error.value = getErrorMessage(caughtError, "Неверный код");
   } finally {
     isLoading.value = false;
   }
@@ -164,12 +171,14 @@ async function handleResend() {
     otpCode.value = "";
 
     startResendCooldown(60);
-  } catch (e: any) {
-    if (typeof e?.retryAfter === "number") {
-      startResendCooldown(e.retryAfter);
+  } catch (caughtError) {
+    const retryAfter = getRetryAfter(caughtError);
+
+    if (retryAfter !== null) {
+      startResendCooldown(retryAfter);
     }
 
-    error.value = e?.message || "Не удалось отправить код";
+    error.value = getErrorMessage(caughtError, "Не удалось отправить код");
   } finally {
     isLoading.value = false;
   }

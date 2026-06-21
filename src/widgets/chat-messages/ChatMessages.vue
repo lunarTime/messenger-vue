@@ -481,7 +481,7 @@ const handleDeleteForMe = (messageId: string) => {
           detail: "Сообщение успешно удалено для Вас",
           life: VALIDATION_CONFIG.TOAST.LIFE_TIME,
         });
-      } catch (error: any) {
+      } catch {
         toast.add({
           severity: "error",
           summary: "Ошибка",
@@ -512,7 +512,7 @@ const handleDeleteForAll = (messageId: string) => {
           detail: "Сообщение успешно удалено для всех",
           life: VALIDATION_CONFIG.TOAST.LIFE_TIME,
         });
-      } catch (error: any) {
+      } catch {
         toast.add({
           severity: "error",
           summary: "Ошибка",

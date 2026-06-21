@@ -4,6 +4,7 @@ import { adminAuth, adminDb } from "../../_lib/firebase-admin.js";
 import {
   applyCors,
   getClientIp,
+  getErrorCode,
   normalizeEmail,
   type HandlerReq,
   type HandlerRes,
@@ -128,14 +129,14 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
 
     try {
       userRecord = await auth.getUserByEmail(email);
-    } catch (e: any) {
-      if (e?.code === "auth/user-not-found") {
+    } catch (caughtError) {
+      if (getErrorCode(caughtError) === "auth/user-not-found") {
         await ref.delete();
 
         return res.status(400).json({ error: "Пользователь не найден" });
       }
 
-      throw e;
+      throw caughtError;
     }
 
     await auth.updateUser(userRecord.uid, { password: newPassword });

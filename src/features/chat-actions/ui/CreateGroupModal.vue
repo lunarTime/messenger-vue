@@ -106,7 +106,7 @@ const handleCreate = async () => {
 
     emit("created", chatId);
     close();
-  } catch (error) {
+  } catch {
     toast.add({
       severity: "error",
       summary: "Ошибка",

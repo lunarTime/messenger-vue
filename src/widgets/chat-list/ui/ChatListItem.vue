@@ -54,7 +54,7 @@ const lastMessageStatus = computed(
 );
 
 const chat = computed(() =>
-  chatStore.chats.find((c: any) => c.id === props.chatId),
+  chatStore.chats.find((chat) => chat.id === props.chatId),
 );
 
 const isGroup = computed(() => chat.value?.type === "group");

@@ -18,7 +18,9 @@ export default defineConfig(({ mode }) => {
     if (ai) {
       try {
         return new URL(ai).origin;
-      } catch {}
+      } catch {
+        return "";
+      }
     }
 
     return "";
@@ -71,6 +73,17 @@ export default defineConfig(({ mode }) => {
       outDir: "dist",
       sourcemap: false,
       rollupOptions: {
+        onwarn(warning, warn) {
+          const isVueUsePureAnnotation =
+            warning.id?.includes("@vueuse/core") &&
+            warning.message.includes(
+              "contains an annotation that Rollup cannot interpret",
+            );
+
+          if (isVueUsePureAnnotation) return;
+
+          warn(warning);
+        },
         output: {
           manualChunks(id) {
             if (!id.includes("node_modules")) return;

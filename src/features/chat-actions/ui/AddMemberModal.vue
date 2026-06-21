@@ -66,7 +66,7 @@ const handleAdd = async () => {
 
     emit("added");
     close();
-  } catch (error) {
+  } catch {
     toast.add({
       severity: "error",
       summary: "Ошибка",

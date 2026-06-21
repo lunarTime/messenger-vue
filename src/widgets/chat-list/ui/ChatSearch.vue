@@ -28,7 +28,7 @@ const {
 const isCreateModalVisible = ref(false);
 const isFilterOpen = ref(false);
 const filterQuery = ref("");
-const filterInputRef = ref<InstanceType<typeof InputText> | null>(null);
+const filterInputRef = ref<{ $el?: HTMLElement } | null>(null);
 
 const onSelect = (event: AutoCompleteOptionSelectEvent) => {
   searchQuery.value = "";
@@ -45,7 +45,7 @@ const toggleFilter = async () => {
   if (isFilterOpen.value) {
     await nextTick();
 
-    (filterInputRef.value as any)?.$el?.focus();
+    filterInputRef.value?.$el?.focus();
   } else {
     filterQuery.value = "";
 

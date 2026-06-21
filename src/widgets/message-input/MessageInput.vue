@@ -23,14 +23,17 @@ import "vue3-emoji-picker/css";
 
 const EmojiPicker = defineAsyncComponent(() => import("vue3-emoji-picker"));
 
-const textareaRef = ref<any>(null);
+type TextareaComponentRef = { $el?: HTMLElement };
+
+const textareaRef = ref<TextareaComponentRef | null>(null);
 
 const getTextarea = (): HTMLTextAreaElement | null => {
   const el = textareaRef.value?.$el;
 
   if (!el) return null;
+  if (el instanceof HTMLTextAreaElement) return el;
 
-  return el.tagName === "TEXTAREA" ? el : el.querySelector("textarea");
+  return el.querySelector("textarea");
 };
 
 const focusTextarea = () => {

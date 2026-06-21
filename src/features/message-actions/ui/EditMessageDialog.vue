@@ -15,6 +15,8 @@ import ProgressBar from "primevue/progressbar";
 
 const EmojiPicker = defineAsyncComponent(() => import("vue3-emoji-picker"));
 
+type TextareaComponentRef = { $el?: HTMLElement };
+
 const props = defineProps<{
   visible: boolean;
   initialText: string;
@@ -33,7 +35,7 @@ const text = ref("");
 const existingAttachments = ref<MessageAttachment[]>([]);
 const { isRewriting, aiError, handleRewrite } = useAiRewrite(text);
 
-const textareaRef = ref<any>(null);
+const textareaRef = ref<TextareaComponentRef | null>(null);
 const pickerRef = ref<HTMLElement | null>(null);
 const pickerKey = ref(0);
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -63,8 +65,9 @@ const getTextarea = (): HTMLTextAreaElement | null => {
   const el = textareaRef.value?.$el;
 
   if (!el) return null;
+  if (el instanceof HTMLTextAreaElement) return el;
 
-  return el.tagName === "TEXTAREA" ? el : el.querySelector("textarea");
+  return el.querySelector("textarea");
 };
 
 type Emoji = { i: string };

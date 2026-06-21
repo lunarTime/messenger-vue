@@ -5,6 +5,7 @@ import { sendOtpEmail } from "../_lib/mailer.js";
 import {
   applyCors,
   getClientIp,
+  getErrorCode,
   normalizeEmail,
   type HandlerReq,
   type HandlerRes,
@@ -65,8 +66,10 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
     try {
       await adminAuth().getUserByEmail(email);
       return res.status(409).json({ error: "Email уже зарегистрирован" });
-    } catch (e: any) {
-      if (e?.code !== "auth/user-not-found") throw e;
+    } catch (caughtError) {
+      if (getErrorCode(caughtError) !== "auth/user-not-found") {
+        throw caughtError;
+      }
     }
 
     const db = adminDb();

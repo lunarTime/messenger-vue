@@ -111,7 +111,9 @@ const onPinnedDragStart = (chatId: string, event: DragEvent) => {
   try {
     event.dataTransfer?.setData("text/plain", chatId);
     event.dataTransfer?.setDragImage(new Image(), 0, 0);
-  } catch {}
+  } catch {
+    dragOverPinnedChatId.value = null;
+  }
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = "move";
   }

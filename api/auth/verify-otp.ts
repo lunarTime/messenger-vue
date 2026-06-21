@@ -5,6 +5,7 @@ import { checkRateLimit } from "../_lib/rateLimit.js";
 import {
   applyCors,
   getClientIp,
+  getErrorCode,
   normalizeEmail,
   type HandlerReq,
   type HandlerRes,
@@ -136,14 +137,14 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
         displayName,
         emailVerified: true,
       });
-    } catch (e: any) {
-      if (e?.code === "auth/email-already-exists") {
+    } catch (caughtError) {
+      if (getErrorCode(caughtError) === "auth/email-already-exists") {
         await ref.delete();
 
         return res.status(409).json({ error: "Email уже зарегистрирован" });
       }
 
-      throw e;
+      throw caughtError;
     }
 
     await db

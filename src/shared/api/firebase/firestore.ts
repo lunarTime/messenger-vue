@@ -23,6 +23,7 @@ import {
   type Timestamp,
   type DocumentSnapshot,
   type QueryDocumentSnapshot,
+  type QueryConstraint,
   arrayUnion,
   increment,
   writeBatch,
@@ -111,7 +112,7 @@ export function subscribeToChatMeta(
         callback({ clearedAtForAll: null });
         return;
       }
-      const data = snap.data() as any;
+      const data = snap.data();
       callback({
         clearedAtForAll: (data.clearedAtForAll as Timestamp) || null,
       });
@@ -126,14 +127,10 @@ export async function updateUserProfile(
 ): Promise<void> {
   if (!userId) throw new Error("userId is required");
 
-  try {
-    await updateDoc(doc(db, "users", userId), {
-      ...data,
-      lastSeen: serverTimestamp(),
-    });
-  } catch (error) {
-    throw error;
-  }
+  await updateDoc(doc(db, "users", userId), {
+    ...data,
+    lastSeen: serverTimestamp(),
+  });
 }
 
 export async function setUserOnlineStatus(
@@ -147,7 +144,9 @@ export async function setUserOnlineStatus(
       isOnline,
       lastSeen: serverTimestamp(),
     });
-  } catch {}
+  } catch {
+    return;
+  }
 }
 
 export async function setChatMuted(
@@ -173,8 +172,7 @@ export async function getOrCreateDirectChat(
   if (!userId1 || !userId2) throw new Error("Both user IDs are required");
   if (userId1 === userId2) throw new Error("Cannot create chat with self");
 
-  try {
-    const participants = [userId1, userId2].sort();
+  const participants = [userId1, userId2].sort();
     const q = query(
       collection(db, "chats"),
       where("type", "==", "direct"),
@@ -214,10 +212,7 @@ export async function getOrCreateDirectChat(
       }),
     ]);
 
-    return chatRef.id;
-  } catch (error) {
-    throw error;
-  }
+  return chatRef.id;
 }
 
 export async function sendSystemMessage(
@@ -397,7 +392,7 @@ function mapMemberMetaSnap(snap: DocumentSnapshot): ChatMemberMeta {
     return EMPTY_MEMBER_META;
   }
 
-  const data = snap.data() as any;
+  const data = snap.data();
 
   return {
     exists: true,
@@ -459,7 +454,7 @@ export function subscribeToChatMemberMeta(
         return;
       }
 
-      const data = snap.data() as any;
+      const data = snap.data();
 
       callback({
         exists: true,
@@ -710,7 +705,7 @@ async function getLastMessageAfterDeletion(
   let targetIsLast = false;
 
   while (true) {
-    const constraints = [orderBy("createdAt", "desc")];
+    const constraints: QueryConstraint[] = [orderBy("createdAt", "desc")];
 
     if (cursor) constraints.push(startAfter(cursor));
 
@@ -989,7 +984,7 @@ export async function searchUsers(
 
     const processDocs = (snap: QuerySnapshot<DocumentData, DocumentData>) => {
       snap.docs.forEach((doc) => {
-        const { id: _ignored, ...data } = doc.data() as any;
+        const data = doc.data();
 
         const isValid =
           data.displayName && data.email && (data.createdAt || data.lastSeen);
@@ -999,7 +994,7 @@ export async function searchUsers(
           const existing = userMap.get(emailKey);
 
           if (!existing || (!existing.photoURL && data.photoURL)) {
-            userMap.set(emailKey, { id: doc.id, ...data } as User);
+            userMap.set(emailKey, { ...data, id: doc.id } as User);
           }
         }
       });
@@ -1190,7 +1185,9 @@ export async function setTypingStatus(
     } else {
       await deleteDoc(typingRef);
     }
-  } catch {}
+  } catch {
+    return;
+  }
 }
 
 export function subscribeToTyping(
@@ -1244,7 +1241,9 @@ export async function markChatAsRead(
       },
       { merge: true },
     );
-  } catch {}
+  } catch {
+    return;
+  }
 }
 
 export async function incrementUnreadCount(
@@ -1414,8 +1413,7 @@ export async function editMessage(
   if (!sanitizedText && !hasAttachments)
     throw new Error("Message cannot be empty");
 
-  try {
-    const messageRef = doc(db, "chats", chatId, "messages", messageId);
+  const messageRef = doc(db, "chats", chatId, "messages", messageId);
     const messageDoc = await getDoc(messageRef);
 
     if (!messageDoc.exists()) throw new Error("Message not found");
@@ -1445,9 +1443,6 @@ export async function editMessage(
           updatedAt: serverTimestamp(),
         });
       }
-    }
-  } catch (error) {
-    throw error;
   }
 }
 

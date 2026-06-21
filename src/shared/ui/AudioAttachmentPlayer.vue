@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import type { MessageAttachment } from "@/shared/types/message";
 
-const props = defineProps<{
+defineProps<{
   attachment: MessageAttachment;
   isOutgoing: boolean;
 }>();
