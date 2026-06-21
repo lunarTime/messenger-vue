@@ -26,6 +26,7 @@ import {
   arrayUnion,
   increment,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 import { db } from "./index";
 import type { Chat, ChatMemberRole } from "@/shared/types/chat";
@@ -378,6 +379,7 @@ export interface ChatMemberMeta {
 
 export type ChatMemberMetaSnapshot = ChatMemberMeta & {
   fromCache: boolean;
+  hasPendingWrites: boolean;
 };
 
 const EMPTY_MEMBER_META: ChatMemberMeta = {
@@ -435,6 +437,7 @@ export function subscribeToChatMemberMeta(
     callback({
       ...EMPTY_MEMBER_META,
       fromCache: false,
+      hasPendingWrites: false,
     });
     return () => {};
   }
@@ -445,11 +448,13 @@ export function subscribeToChatMemberMeta(
     ref,
     (snap) => {
       const fromCache = snap.metadata.fromCache;
+      const hasPendingWrites = snap.metadata.hasPendingWrites;
 
       if (!snap.exists()) {
         callback({
           ...EMPTY_MEMBER_META,
           fromCache,
+          hasPendingWrites,
         });
         return;
       }
@@ -468,12 +473,14 @@ export function subscribeToChatMemberMeta(
         role: (data.role as ChatMemberRole) || "member",
         unreadCount: (data.unreadCount as number) || 0,
         fromCache,
+        hasPendingWrites,
       });
     },
     () =>
       callback({
         ...EMPTY_MEMBER_META,
         fromCache: false,
+        hasPendingWrites: false,
       }),
   );
 }
@@ -666,7 +673,6 @@ async function recomputeChatLastMessage(chatId: string): Promise<void> {
   if (!lastAlive) {
     await updateDoc(doc(db, "chats", chatId), {
       lastMessage: null,
-      updatedAt: serverTimestamp(),
     });
     return;
   }
@@ -687,8 +693,72 @@ async function recomputeChatLastMessage(chatId: string): Promise<void> {
       senderId: data.senderId,
       createdAt: data.createdAt,
     },
-    updatedAt: serverTimestamp(),
+    updatedAt: data.createdAt,
   });
+}
+
+type LastMessageAfterDeletion = {
+  isTargetLast: boolean;
+  replacement: Chat["lastMessage"] | null;
+};
+
+async function getLastMessageAfterDeletion(
+  chatId: string,
+  targetMessageId: string,
+): Promise<LastMessageAfterDeletion> {
+  let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
+  let targetIsLast = false;
+
+  while (true) {
+    const constraints = [orderBy("createdAt", "desc")];
+
+    if (cursor) constraints.push(startAfter(cursor));
+
+    constraints.push(limit(50));
+
+    const snapshot = await getDocsFromServer(
+      query(collection(db, "chats", chatId, "messages"), ...constraints),
+    );
+
+    for (const messageDoc of snapshot.docs) {
+      const data = messageDoc.data();
+
+      if (data.isDeleted) continue;
+
+      if (!targetIsLast) {
+        if (messageDoc.id !== targetMessageId) {
+          return { isTargetLast: false, replacement: null };
+        }
+
+        targetIsLast = true;
+        continue;
+      }
+
+      const text =
+        data.type === "system"
+          ? "Системное сообщение"
+          : formatLastMessageText(
+              (data.text as string) ?? "",
+              data.attachments as MessageAttachment[] | undefined,
+            );
+
+      return {
+        isTargetLast: true,
+        replacement: {
+          id: messageDoc.id,
+          text,
+          senderId: data.senderId,
+          createdAt: data.createdAt,
+        },
+      };
+    }
+
+    if (snapshot.size < 50) {
+      return { isTargetLast: targetIsLast, replacement: null };
+    }
+
+    cursor = snapshot.docs[snapshot.docs.length - 1] ?? null;
+  }
 }
 
 export async function clearChatHistoryForAll(
@@ -763,6 +833,7 @@ export async function getUserChatsFromServer(userId: string): Promise<Chat[]> {
 
 export type UserChatsSnapshotMeta = {
   fromCache: boolean;
+  hasPendingWrites: boolean;
 };
 
 export function subscribeToUserChats(
@@ -770,7 +841,7 @@ export function subscribeToUserChats(
   callback: (chats: Chat[], meta: UserChatsSnapshotMeta) => void,
 ): Unsubscribe {
   if (!userId) {
-    callback([], { fromCache: false });
+    callback([], { fromCache: false, hasPendingWrites: false });
     return () => {};
   }
 
@@ -781,10 +852,13 @@ export function subscribeToUserChats(
         chat.participants.includes(userId),
       );
 
-      callback(chats, { fromCache: snapshot.metadata.fromCache });
+      callback(chats, {
+        fromCache: snapshot.metadata.fromCache,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+      });
     },
     () => {
-      callback([], { fromCache: false });
+      callback([], { fromCache: false, hasPendingWrites: false });
     },
   );
 }
@@ -833,31 +907,30 @@ export async function sendMessage(
 
   const messageRef = doc(collection(db, "chats", chatId, "messages"));
   const messageId = messageRef.id;
+  const chatRef = doc(db, "chats", chatId);
+  const chatDoc = await getDoc(chatRef);
 
-  await setDoc(messageRef, messageData);
+  if (!chatDoc.exists()) throw new Error("Chat not found");
 
-  const chatDoc = await getDoc(doc(db, "chats", chatId));
+  const participants = (chatDoc.data() as Chat).participants || [];
 
-  if (chatDoc.exists()) {
-    const chatData = chatDoc.data() as Chat;
-    const participants = chatData.participants || [];
-    const tasks = participants
-      .filter((participantId) => participantId !== senderId)
-      .map((participantId) =>
-        incrementUnreadCount(chatId, participantId).catch((err) => {
-          console.error(`Failed to notify participant ${participantId}:`, err);
-        }),
-      );
+  if (!participants.includes(senderId)) throw new Error("Sender is not a member");
 
-    await Promise.allSettled(tasks);
-  }
+  const otherParticipants = participants.filter(
+    (participantId) => participantId !== senderId,
+  );
+
+  if (otherParticipants.length > 498) throw new Error("Too many participants");
 
   const lastMessageText = formatLastMessageText(
     sanitizedText,
     options.attachments,
   );
 
-  await updateDoc(doc(db, "chats", chatId), {
+  const batch = writeBatch(db);
+
+  batch.set(messageRef, messageData);
+  batch.update(chatRef, {
     lastMessage: {
       id: messageId,
       text: lastMessageText,
@@ -866,6 +939,19 @@ export async function sendMessage(
     },
     updatedAt: serverTimestamp(),
   });
+
+  otherParticipants.forEach((participantId) => {
+    batch.set(
+      doc(db, "chats", chatId, "members", participantId),
+      {
+        unreadCount: increment(1),
+        lastMessageAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
+
+  await batch.commit();
 
   return messageId;
 }
@@ -1164,15 +1250,16 @@ export async function markChatAsRead(
 export async function incrementUnreadCount(
   chatId: string,
   userId: string,
+  amount = 1,
 ): Promise<void> {
-  if (!chatId || !userId) return;
+  if (!chatId || !userId || amount < 1) return;
 
   try {
     const chatMemberRef = doc(db, "chats", chatId, "members", userId);
     await setDoc(
       chatMemberRef,
       {
-        unreadCount: increment(1),
+        unreadCount: increment(amount),
         lastMessageAt: serverTimestamp(),
       },
       { merge: true },
@@ -1394,36 +1481,82 @@ export async function deleteMessageForAll(
   if (!chatId || !messageId || !userId)
     throw new Error("Invalid delete parameters");
 
-  try {
-    const messageRef = doc(db, "chats", chatId, "messages", messageId);
-    const messageDoc = await getDoc(messageRef);
+  const messageRef = doc(db, "chats", chatId, "messages", messageId);
+  const chatRef = doc(db, "chats", chatId);
+  const lastMessageAfterDeletion = await getLastMessageAfterDeletion(
+    chatId,
+    messageId,
+  );
+
+  await runTransaction(db, async (transaction) => {
+    const [messageDoc, chatDoc] = await Promise.all([
+      transaction.get(messageRef),
+      transaction.get(chatRef),
+    ]);
 
     if (!messageDoc.exists()) throw new Error("Message not found");
 
     const messageData = messageDoc.data();
-    if (messageData.senderId !== userId) throw new Error("Unauthorized");
 
-    await updateDoc(messageRef, {
+    if (messageData.senderId !== userId) throw new Error("Unauthorized");
+    if (messageData.isDeleted) return;
+
+    const chatData = chatDoc.exists() ? (chatDoc.data() as Chat) : null;
+    const participants = chatData?.participants || [];
+    const recipientIds = participants.filter((id) => id !== userId);
+    const memberRefs = recipientIds.map((recipientId) =>
+      doc(db, "chats", chatId, "members", recipientId),
+    );
+    const memberDocs = await Promise.all(
+      memberRefs.map((memberRef) => transaction.get(memberRef)),
+    );
+    const messageCreatedAt = messageData.createdAt as Timestamp | undefined;
+
+    transaction.update(messageRef, {
       isDeleted: true,
       text: "Сообщение удалено",
       deletedAt: serverTimestamp(),
       deletedBy: userId,
     });
 
-    const chatDoc = await getDoc(doc(db, "chats", chatId));
-    if (!chatDoc.exists()) return;
+    memberDocs.forEach((memberDoc, index) => {
+      if (!memberDoc.exists()) return;
 
-    const chatData = chatDoc.data() as Chat;
-    const wasLastMessage =
-      (chatData.lastMessage as { id?: string } | null | undefined)?.id ===
-      messageId;
+      const memberData = memberDoc.data();
+      const unreadCount = Math.max(0, Number(memberData.unreadCount) || 0);
+      const lastReadAt = memberData.lastReadAt as Timestamp | undefined;
+      const wasUnread =
+        unreadCount > 0 &&
+        (!messageCreatedAt ||
+          !lastReadAt ||
+          lastReadAt.toMillis() < messageCreatedAt.toMillis());
 
-    if (!wasLastMessage) return;
+      if (!wasUnread) return;
 
-    await recomputeChatLastMessage(chatId);
-  } catch (error) {
-    throw error;
-  }
+      transaction.update(memberRefs[index]!, {
+        unreadCount: Math.max(0, unreadCount - 1),
+      });
+    });
+
+    const lastMessageId = chatData?.lastMessage?.id;
+    const isKnownLastMessage =
+      lastMessageId === messageId ||
+      (!lastMessageId && lastMessageAfterDeletion.isTargetLast);
+
+    if (isKnownLastMessage && chatDoc.exists()) {
+      const replacement = lastMessageAfterDeletion.replacement;
+
+      transaction.update(
+        chatRef,
+        replacement
+          ? {
+              lastMessage: replacement,
+              updatedAt: replacement.createdAt,
+            }
+          : { lastMessage: null },
+      );
+    }
+  });
 }
 
 export async function sendMessagesBatch(
@@ -1438,10 +1571,15 @@ export async function sendMessagesBatch(
   if (!chatId || !senderId || !messages.length)
     throw new Error("Invalid parameters");
 
-  const chatDoc = await getDoc(doc(db, "chats", chatId));
-  const participants = chatDoc.exists()
-    ? (chatDoc.data() as Chat).participants || []
-    : [];
+  const chatRef = doc(db, "chats", chatId);
+  const chatDoc = await getDoc(chatRef);
+
+  if (!chatDoc.exists()) throw new Error("Chat not found");
+
+  const participants = (chatDoc.data() as Chat).participants || [];
+
+  if (!participants.includes(senderId)) throw new Error("Sender is not a member");
+
   const otherParticipants = participants.filter((id) => id !== senderId);
 
   const sanitized = messages
@@ -1460,23 +1598,29 @@ export async function sendMessagesBatch(
     );
 
   if (!sanitized.length) throw new Error("No valid messages to send");
+  if (sanitized.length + otherParticipants.length + 1 > 500)
+    throw new Error("Too many messages or participants");
 
-  const messageRefs = await Promise.all(
-    sanitized.map((m) => {
-      const data: Record<string, unknown> = {
-        chatId,
-        senderId,
-        type: "text" as const,
-        text: m.text,
-        isEdited: false,
-        isDeleted: false,
-        createdAt: serverTimestamp(),
-      };
-      if (m.forwardedFrom) data.forwardedFrom = m.forwardedFrom;
-      if (m.attachments?.length) data.attachments = m.attachments;
-      return addDoc(collection(db, "chats", chatId, "messages"), data);
-    }),
-  );
+  const batch = writeBatch(db);
+  const messageRefs = sanitized.map((message) => {
+    const messageRef = doc(collection(db, "chats", chatId, "messages"));
+    const data: Record<string, unknown> = {
+      chatId,
+      senderId,
+      type: "text" as const,
+      text: message.text,
+      isEdited: false,
+      isDeleted: false,
+      createdAt: serverTimestamp(),
+    };
+
+    if (message.forwardedFrom) data.forwardedFrom = message.forwardedFrom;
+    if (message.attachments?.length) data.attachments = message.attachments;
+
+    batch.set(messageRef, data);
+
+    return messageRef;
+  });
 
   const lastRef = messageRefs[messageRefs.length - 1]!;
   const lastSanitized = sanitized[sanitized.length - 1]!;
@@ -1485,20 +1629,28 @@ export async function sendMessagesBatch(
     lastSanitized.attachments,
   );
 
-  await Promise.allSettled([
-    updateDoc(doc(db, "chats", chatId), {
-      lastMessage: {
-        id: lastRef.id,
-        text: lastText,
-        senderId,
-        createdAt: serverTimestamp(),
+  batch.update(chatRef, {
+    lastMessage: {
+      id: lastRef.id,
+      text: lastText,
+      senderId,
+      createdAt: serverTimestamp(),
+    },
+    updatedAt: serverTimestamp(),
+  });
+
+  otherParticipants.forEach((participantId) => {
+    batch.set(
+      doc(db, "chats", chatId, "members", participantId),
+      {
+        unreadCount: increment(sanitized.length),
+        lastMessageAt: serverTimestamp(),
       },
-      updatedAt: serverTimestamp(),
-    }),
-    ...otherParticipants.map((participantId) =>
-      incrementUnreadCount(chatId, participantId),
-    ),
-  ]);
+      { merge: true },
+    );
+  });
+
+  await batch.commit();
 }
 
 export function subscribeToMessageDeletedForUser(
