@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import Button from "primevue/button";
+import { useToast } from "primevue/usetoast";
+import AudioAttachmentPlayer from "@/shared/ui/AudioAttachmentPlayer.vue";
 import MediaViewer from "@/shared/ui/MediaViewer.vue";
 import { downloadFile } from "@/shared/lib/download/download";
 import { formatFileSize } from "@/shared/lib/image/formatFileSize";
@@ -10,6 +12,22 @@ const props = defineProps<{
   attachments: MessageAttachment[];
   isOutgoing: boolean;
 }>();
+
+const toast = useToast();
+
+async function handleDownload(attachment: MessageAttachment) {
+  try {
+    await downloadFile(attachment.url, attachment.name);
+  } catch (error) {
+    console.error("Ошибка загрузки файла:", error);
+    toast.add({
+      severity: "error",
+      summary: "Загрузка не удалась",
+      detail: error instanceof Error ? error.message : "File is unavailable",
+      life: 5000,
+    });
+  }
+}
 
 const mediaItems = computed(() =>
   props.attachments.filter((a) => a.type === "image" || a.type === "video"),
@@ -88,7 +106,7 @@ const gridClass = computed(() => {
           rounded
           class="absolute! top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-(--p-primary-color)/80! md:inline-flex! hidden!"
           aria-label="Скачать"
-          @click.stop="downloadFile(img.url, img.name)"
+          @click.stop="handleDownload(img)"
           v-tooltip.top="'Скачать'"
         />
       </div>
@@ -97,7 +115,7 @@ const gridClass = computed(() => {
     <div
       v-for="vid in attachments.filter((a) => a.type === 'video')"
       :key="vid.id"
-      class="group rounded-xl overflow-hidden max-w-xs"
+      class="group relative rounded-xl overflow-hidden max-w-xs"
     >
       <div class="relative">
         <video
@@ -130,28 +148,18 @@ const gridClass = computed(() => {
         rounded
         class="absolute! top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-white! bg-black/40! hover:bg-black/60! pointer-events-auto"
         aria-label="Скачать"
-        @click.stop="downloadFile(vid.url, vid.name)"
+        @click.stop="handleDownload(vid)"
         v-tooltip.top="'Скачать'"
       />
     </div>
 
-    <div
+    <AudioAttachmentPlayer
       v-for="aud in attachments.filter((a) => a.type === 'audio')"
       :key="aud.id"
-      class="flex items-center gap-2 px-3 py-2 rounded-xl max-w-xs"
-      :class="isOutgoing ? 'bg-white/15' : 'bg-(--p-primary-color)/10'"
-    >
-      <div class="flex-1 min-w-0">
-        <div
-          :aria-label="aud.name"
-          v-tooltip.top="aud.name"
-          class="text-xs opacity-60 md:max-w-80 max-w-50 truncate mb-1"
-        >
-          {{ aud.name }}
-        </div>
-        <audio :src="aud.url" controls class="w-full h-8" preload="none" />
-      </div>
-    </div>
+      :attachment="aud"
+      :is-outgoing="isOutgoing"
+      @download="handleDownload"
+    />
 
     <div
       v-for="file in nonMediaItems.filter((a) => a.type === 'file')"
@@ -184,7 +192,7 @@ const gridClass = computed(() => {
         rounded
         class="shrink-0 dark:text-white! text-black!"
         aria-label="Скачать"
-        @click="downloadFile(file.url, file.name)"
+        @click="handleDownload(file)"
         v-tooltip.top="'Скачать'"
       />
     </div>
