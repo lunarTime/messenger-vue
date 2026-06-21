@@ -126,7 +126,7 @@ const onFilterKeydown = (e: KeyboardEvent) => {
                     {{ option.displayName }}
                   </div>
                   <div class="text-sm truncate">
-                    {{ option.email }}
+                    {{ option.jobTitle ? `${option.jobTitle} · ${option.email}` : option.email }}
                   </div>
                 </div>
               </div>
