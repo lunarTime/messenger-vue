@@ -6,6 +6,7 @@ export interface User {
     firstName: string
     lastName: string
     displayName: string
+    jobTitle?: string
     photoURL: string | null
     bio?: string
     isOnline: boolean
@@ -20,6 +21,7 @@ export interface UserUpdateData {
     firstName?: string
     lastName?: string
     displayName?: string
+    jobTitle?: string
     photoURL?: string | null
     bio?: string
 }
