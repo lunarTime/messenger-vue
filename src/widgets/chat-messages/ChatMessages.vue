@@ -175,6 +175,13 @@ const onMouseDown = (e: MouseEvent) => {
 
   const target = e.target as Element;
 
+  if (
+    target.closest(
+      "button, input, textarea, select, video, audio, [data-message-gesture-ignore]",
+    )
+  )
+    return;
+
   if (target.closest(".chat-bubble-text")) {
     isTextSelection = true;
 
@@ -658,6 +665,7 @@ onUnmounted(() => {
                       size="normal"
                       :pt="{
                         image: {
+                          class: 'object-cover',
                           alt: chatStore.chatParticipants.get(group.senderId!)
                             ?.displayName,
                         },
