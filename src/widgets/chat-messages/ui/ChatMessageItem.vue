@@ -149,16 +149,22 @@ const {
 });
 
 const onTouchStart = (e: TouchEvent) => {
+  if ((e.target as Element).closest("[data-message-gesture-ignore]")) return;
+
   swipeTouchStart(e);
   lpTouchStart(e);
 };
 
 const onTouchMove = (e: TouchEvent) => {
+  if ((e.target as Element).closest("[data-message-gesture-ignore]")) return;
+
   swipeTouchMove(e);
   lpTouchMove(e);
 };
 
 const onTouchEnd = (e: TouchEvent) => {
+  if ((e.target as Element).closest("[data-message-gesture-ignore]")) return;
+
   swipeTouchEnd(e);
   lpTouchEnd();
 };
