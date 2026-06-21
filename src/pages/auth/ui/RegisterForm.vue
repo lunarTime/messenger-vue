@@ -21,6 +21,7 @@ const formData = reactive<RegisterFormData>({
   password: "",
   firstName: "",
   lastName: "",
+  jobTitle: "",
 });
 
 const confirmPassword = ref("");
@@ -118,6 +119,7 @@ async function handleVerify(code?: string) {
       password: formData.password,
       firstName: formData.firstName,
       lastName: formData.lastName,
+      jobTitle: formData.jobTitle,
     });
 
     await signInWithCustomToken(auth, customToken);
@@ -230,6 +232,18 @@ function backToForm() {
           <label for="lastName">Фамилия</label>
         </FloatLabel>
       </div>
+
+      <FloatLabel variant="on">
+        <InputText
+          id="jobTitle"
+          v-model="formData.jobTitle"
+          autocomplete="organization-title"
+          fluid
+          :maxlength="100"
+          :disabled="isLoading"
+        />
+        <label for="jobTitle">Должность</label>
+      </FloatLabel>
 
       <FloatLabel variant="on">
         <InputText
