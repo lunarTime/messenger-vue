@@ -257,7 +257,15 @@ onUnmounted(() => {
                 </span>
               </div>
               <div class="text-xs opacity-60">
-                {{ isUserOnline(member.userId) ? "в сети" : "не в сети" }}
+                {{
+                  participantsData.get(member.userId)?.jobTitle
+                    ? `${participantsData.get(member.userId)?.jobTitle} · ${
+                        isUserOnline(member.userId) ? "в сети" : "не в сети"
+                      }`
+                    : isUserOnline(member.userId)
+                      ? "в сети"
+                      : "не в сети"
+                }}
               </div>
             </div>
           </button>
