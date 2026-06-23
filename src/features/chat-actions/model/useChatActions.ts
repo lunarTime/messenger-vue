@@ -5,6 +5,7 @@ import { useChatStore } from "@/entities/chat/store/chat.store";
 import {
   clearChatHistoryForAll,
   clearChatHistoryForMe,
+  deleteDirectChatForUser,
   leaveChat,
   setChatPinned,
   setChatMuted,
@@ -47,18 +48,19 @@ export function useChatActions() {
 
     confirm.require({
       header: "Удалить чат",
-      message: "Удалить чат у себя? Сообщения у собеседника останутся.",
+      message:
+        "Удалить чат у себя и удалить ваши сообщения у собеседника? Сообщения собеседника останутся только у него.",
       icon: "pi pi-exclamation-triangle",
       rejectLabel: "Отмена",
       acceptLabel: "Удалить",
       acceptClass: "p-button-danger",
       accept: async () => {
-        await leaveChat(chatId, myId);
+        await deleteDirectChatForUser(chatId, myId);
         chatStore.closeActiveChat();
         toast.add({
           severity: "success",
           summary: "Готово",
-          detail: "Чат удалён у вас",
+          detail: "Чат удалён, ваши сообщения удалены у собеседника",
           life: 2500,
         });
       },

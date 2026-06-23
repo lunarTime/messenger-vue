@@ -261,6 +261,8 @@ const areSenderProfilesReady = computed(() => {
   const senderIds = new Set<string>();
 
   for (const msg of messageStore.messages) {
+    if (msg.type !== "text") continue;
+
     if (msg.senderId && msg.senderId !== myId) {
       senderIds.add(msg.senderId);
     }
