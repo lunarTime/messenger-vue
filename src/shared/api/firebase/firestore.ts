@@ -28,6 +28,7 @@ import {
   increment,
   writeBatch,
   runTransaction,
+  deleteField,
 } from "firebase/firestore";
 import { db } from "./index";
 import type { Chat, ChatMemberRole } from "@/shared/types/chat";
@@ -768,6 +769,54 @@ export async function clearChatHistoryForAll(
   );
   const snapshot = await getDocs(myMessagesQuery);
   const aliveDocs = snapshot.docs.filter((d) => !d.data().isDeleted);
+  const chatDoc = await getDoc(doc(db, "chats", chatId));
+  const participants = chatDoc.exists()
+    ? ((chatDoc.data() as Chat).participants ?? [])
+    : [];
+  const recipientIds = participants.filter((id) => id !== userId);
+  const memberDocs = await Promise.all(
+    recipientIds.map((recipientId) =>
+      getDoc(doc(db, "chats", chatId, "members", recipientId)),
+    ),
+  );
+  const unreadCountByRecipient = new Map<string, number>();
+  const unreadDecrementByRecipient = new Map<string, number>();
+
+  recipientIds.forEach((recipientId, index) => {
+    const memberDoc = memberDocs[index];
+    if (!memberDoc?.exists()) return;
+
+    unreadCountByRecipient.set(
+      recipientId,
+      Number(memberDoc.data().unreadCount) || 0,
+    );
+  });
+
+  aliveDocs.forEach((messageDoc) => {
+    const messageCreatedAt = messageDoc.data().createdAt as Timestamp | null;
+
+    recipientIds.forEach((recipientId, index) => {
+      const memberDoc = memberDocs[index];
+      if (!memberDoc?.exists()) return;
+
+      const memberData = memberDoc.data();
+      const unreadCount = unreadCountByRecipient.get(recipientId) ?? 0;
+      if (unreadCount <= 0) return;
+
+      const lastReadAt = memberData.lastReadAt as Timestamp | undefined;
+      const wasUnread =
+        !messageCreatedAt ||
+        !lastReadAt ||
+        lastReadAt.toMillis() < messageCreatedAt.toMillis();
+
+      if (!wasUnread) return;
+
+      unreadDecrementByRecipient.set(
+        recipientId,
+        (unreadDecrementByRecipient.get(recipientId) ?? 0) + 1,
+      );
+    });
+  });
 
   const CHUNK = 400;
 
@@ -777,7 +826,10 @@ export async function clearChatHistoryForAll(
     for (const docSnap of aliveDocs.slice(i, i + CHUNK)) {
       batch.update(docSnap.ref, {
         isDeleted: true,
-        text: "Сообщение удалено",
+        text: "",
+        attachments: deleteField(),
+        replyToMessageId: deleteField(),
+        forwardedFrom: deleteField(),
         deletedAt: serverTimestamp(),
         deletedBy: userId,
       });
@@ -786,7 +838,45 @@ export async function clearChatHistoryForAll(
     await batch.commit();
   }
 
+  if (unreadDecrementByRecipient.size > 0) {
+    const batch = writeBatch(db);
+
+    unreadDecrementByRecipient.forEach((count, recipientId) => {
+      const unreadCount = unreadCountByRecipient.get(recipientId) ?? 0;
+
+      batch.update(doc(db, "chats", chatId, "members", recipientId), {
+        unreadCount: increment(-Math.min(count, unreadCount)),
+      });
+    });
+
+    await batch.commit();
+  }
+
   await recomputeChatLastMessage(chatId);
+}
+
+export async function deleteDirectChatForUser(
+  chatId: string,
+  userId: string,
+): Promise<void> {
+  if (!chatId || !userId) throw new Error("Invalid parameters");
+
+  const chatDoc = await getDoc(doc(db, "chats", chatId));
+
+  if (!chatDoc.exists()) throw new Error("Chat not found");
+
+  const chatData = chatDoc.data() as Chat;
+
+  if (chatData.type !== "direct") {
+    throw new Error("Only direct chats can be deleted this way");
+  }
+
+  if (!chatData.participants?.includes(userId)) {
+    throw new Error("User is not a chat participant");
+  }
+
+  await clearChatHistoryForAll(chatId, userId);
+  await leaveChat(chatId, userId);
 }
 
 function mapChatDocs(docs: QueryDocumentSnapshot<DocumentData>[]): Chat[] {
