@@ -18,6 +18,25 @@ interface GigaChatResponse {
   }[];
 }
 
+const DEFAULT_AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
+const DEFAULT_COMPLETIONS_URL =
+  "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
+const REQUEST_TIMEOUT_MS = 30000;
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export default async function handler(req: HandlerReq, res: HandlerRes) {
   applyCors(req, res);
 
@@ -36,6 +55,9 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
 
   const clientId = process.env.GIGACHAT_CLIENT_ID;
   const clientSecret = process.env.GIGACHAT_CLIENT_SECRET;
+  const authUrl = process.env.GIGACHAT_AUTH_URL || DEFAULT_AUTH_URL;
+  const completionsUrl =
+    process.env.GIGACHAT_COMPLETIONS_URL || DEFAULT_COMPLETIONS_URL;
 
   if (!clientId || !clientSecret) {
     return res.status(500).json({ error: "Missing GigaChat credentials" });
@@ -47,19 +69,16 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
     );
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-    const authResponse = await fetch(
-      "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-          Authorization: `Basic ${authHeader}`,
-          RqUID: crypto.randomUUID(),
-        },
-        body: new URLSearchParams({ scope: "GIGACHAT_API_PERS" }),
+    const authResponse = await fetchWithTimeout(authUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+        Authorization: `Basic ${authHeader}`,
+        RqUID: crypto.randomUUID(),
       },
-    );
+      body: new URLSearchParams({ scope: "GIGACHAT_API_PERS" }),
+    });
 
     if (!authResponse.ok) {
       const errorText = await authResponse.text();
@@ -69,29 +88,26 @@ export default async function handler(req: HandlerReq, res: HandlerRes) {
     const authData = (await authResponse.json()) as GigaChatAuthResponse;
     const token = authData.access_token;
 
-    const aiResponse = await fetch(
-      "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          model: "GigaChat",
-          messages: [
-            {
-              role: "system",
-              content:
-                process.env.GIGACHAT_SYSTEM_PROMPT ||
-                "Ты — профессиональный корпоративный помощник. Перепиши сообщение пользователя в официально-деловом стиле. Сделай его вежливым. Верни только переписанный текст.",
-            },
-            { role: "user", content: text },
-          ],
-          temperature: 0.7,
-        }),
+    const aiResponse = await fetchWithTimeout(completionsUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-    );
+      body: JSON.stringify({
+        model: process.env.GIGACHAT_MODEL || "GigaChat",
+        messages: [
+          {
+            role: "system",
+            content:
+              process.env.GIGACHAT_SYSTEM_PROMPT ||
+              "Ты — профессиональный корпоративный помощник. Перепиши сообщение пользователя в официально-деловом стиле. Сделай его вежливым. Верни только переписанный текст.",
+          },
+          { role: "user", content: text },
+        ],
+        temperature: 0.7,
+      }),
+    });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
