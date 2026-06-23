@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, onUnmounted, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
-import { subscribeToTyping } from "@/shared/api/firebase/firestore";
 import { useGlobalNow } from "@/shared/composables/useGlobalNow";
 import { useIsMobile } from "@/shared/composables/useIsMobile";
 import { useUserStore } from "@/entities/user/store/user.store";
@@ -21,8 +20,6 @@ const userStore = useUserStore();
 const { isMobile } = useIsMobile();
 const now = useGlobalNow(30000);
 
-let unsubscribeTyping: (() => void) | null = null;
-const typingUsers = ref<string[]>([]);
 const isInfoVisible = ref(false);
 const isUserViewVisible = ref(false);
 
@@ -105,6 +102,12 @@ const participantCount = computed(() => {
   return chatStore.getParticipantCount(chat.value.id);
 });
 
+const typingUsers = computed(() => {
+  if (!chat.value) return [];
+
+  return chatStore.getTypingUsers(chat.value.id);
+});
+
 const isTyping = computed(() => {
   if (isGroup.value) return typingUsers.value.length > 0;
   const otherId = otherUserId.value;
@@ -150,11 +153,6 @@ const getChatPhotoURL = computed(() => {
 watch(
   () => chatStore.activeChatId,
   (chatId) => {
-    unsubscribeTyping?.();
-    unsubscribeTyping = null;
-
-    typingUsers.value = [];
-
     if (!chatId) return;
 
     const activeChat = chatStore.activeChat;
@@ -162,18 +160,9 @@ watch(
     if (activeChat) {
       void chatStore.ensureParticipants(activeChat.participants);
     }
-
-    unsubscribeTyping = subscribeToTyping(chatId, (users) => {
-      typingUsers.value = users.filter((id) => id !== userStore.userId);
-    });
   },
   { immediate: true },
 );
-
-onUnmounted(() => {
-  unsubscribeTyping?.();
-  unsubscribeTyping = null;
-});
 </script>
 
 <template>

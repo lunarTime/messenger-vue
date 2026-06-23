@@ -93,7 +93,7 @@ VITE_CLOUDINARY_CLOUD_NAME=
 VITE_CLOUDINARY_UPLOAD_PRESET=
 
 # AI rewrite endpoint
-VITE_AI_API_URL=https://your-project.vercel.app/api/rewrite
+VITE_AI_API_URL=/api/rewrite
 
 # Опционально: включить Firebase Emulator Suite
 VITE_USE_FIREBASE_EMULATORS=false
@@ -249,7 +249,7 @@ VITE_CLOUDINARY_CLOUD_NAME=
 VITE_CLOUDINARY_UPLOAD_PRESET=
 
 # AI rewrite endpoint
-VITE_AI_API_URL=https://your-project.vercel.app/api/rewrite
+VITE_AI_API_URL=/api/rewrite
 
 # Optional: enable Firebase Emulator Suite
 VITE_USE_FIREBASE_EMULATORS=false
