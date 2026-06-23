@@ -10,6 +10,7 @@ import {
   subscribeToUser,
   subscribeToChatMemberMeta,
   subscribeToChatReadStates,
+  subscribeToTyping,
   setChatPinnedOrder,
 } from "@/shared/api/firebase/firestore";
 import type { Timestamp, Unsubscribe } from "firebase/firestore";
@@ -59,7 +60,9 @@ export const useChatStore = defineStore("chat", () => {
   const temporaryChat = ref<TemporaryChat | null>(null);
   const memberMetaSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
   const lastStatusSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
+  const typingSubscriptions = ref<Map<string, Unsubscribe>>(new Map());
   const lastMessageStatuses = ref<Map<string, "sent" | "read">>(new Map());
+  const typingUsersMap = ref<Map<string, string[]>>(new Map());
   const chatReadStates = ref<Map<string, Map<string, Timestamp>>>(new Map());
   const unreadCounts = ref<Map<string, number>>(new Map());
   const pinnedMap = ref<Map<string, boolean>>(new Map());
@@ -401,6 +404,15 @@ export const useChatStore = defineStore("chat", () => {
         }
       }
 
+      for (const [chatId, unsub] of typingSubscriptions.value.entries()) {
+        if (!loadedChatIds.has(chatId)) {
+          unsub();
+
+          typingSubscriptions.value.delete(chatId);
+          typingUsersMap.value.delete(chatId);
+        }
+      }
+
       for (const chat of loadedChats) {
         if (!memberMetaSubscriptions.value.has(chat.id)) {
           const unsub = subscribeToChatMemberMeta(chat.id, myIdVal, (meta) => {
@@ -412,6 +424,19 @@ export const useChatStore = defineStore("chat", () => {
         }
 
         _refreshLastStatusSub(chat);
+
+        if (!typingSubscriptions.value.has(chat.id)) {
+          const unsub = subscribeToTyping(chat.id, (users) => {
+            const filtered = users.filter((id) => id !== myIdVal);
+
+            typingUsersMap.value = new Map(typingUsersMap.value).set(
+              chat.id,
+              filtered,
+            );
+          });
+
+          typingSubscriptions.value.set(chat.id, unsub);
+        }
       }
 
       const participantIds = new Set<string>();
@@ -710,7 +735,10 @@ export const useChatStore = defineStore("chat", () => {
     memberMetaSubscriptions.value.clear();
     lastStatusSubscriptions.value.forEach((unsub) => unsub());
     lastStatusSubscriptions.value.clear();
+    typingSubscriptions.value.forEach((unsub) => unsub());
+    typingSubscriptions.value.clear();
     lastMessageStatuses.value.clear();
+    typingUsersMap.value.clear();
     chatReadStates.value.clear();
     unreadCounts.value.clear();
     pinnedMap.value.clear();
@@ -781,6 +809,10 @@ export const useChatStore = defineStore("chat", () => {
     return chat?.participants.length || 0;
   };
 
+  const getTypingUsers = (chatId: string): string[] => {
+    return typingUsersMap.value.get(chatId) ?? [];
+  };
+
   return {
     chats,
     activeChatId,
@@ -811,6 +843,7 @@ export const useChatStore = defineStore("chat", () => {
     isChatOwner,
     isChatAdmin,
     getParticipantCount,
+    getTypingUsers,
     reorderPinnedChats,
     ensureParticipants,
     cleanup,
