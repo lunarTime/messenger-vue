@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch, onUnmounted } from "vue";
+import { computed, ref } from "vue";
 import { useChatStore } from "@/entities/chat/store/chat.store";
 import { useUserStore } from "@/entities/user/store/user.store";
 import { useUnreadCounts } from "@/shared/composables/useUnreadCounts";
 import { useIsMobile } from "@/shared/composables/useIsMobile";
-import { subscribeToTyping } from "@/shared/api/firebase/firestore";
 import type { Chat } from "@/shared/types/chat";
-import type { Unsubscribe } from "firebase/firestore";
 import ChatListItem from "@/widgets/chat-list/ui/ChatListItem.vue";
 import UserSearch from "@/widgets/chat-list/ui/ChatSearch.vue";
 import CurrentUser from "@/widgets/ui/CurrentUser.vue";
@@ -23,33 +21,6 @@ const chatFilterQuery = ref("");
 const { unreadCounts } = useUnreadCounts(
   computed(() => chatStore.visibleChats),
 );
-
-const activeChatTypingUsers = ref<string[]>([]);
-
-let unsubTyping: Unsubscribe | null = null;
-
-watch(
-  () => chatStore.activeChatId,
-  (chatId) => {
-    unsubTyping?.();
-    unsubTyping = null;
-
-    activeChatTypingUsers.value = [];
-
-    if (!chatId) return;
-
-    unsubTyping = subscribeToTyping(chatId, (users) => {
-      activeChatTypingUsers.value = users.filter(
-        (id) => id !== userStore.userId,
-      );
-    });
-  },
-  { immediate: true },
-);
-
-onUnmounted(() => {
-  unsubTyping?.();
-});
 
 const getOtherUserId = (chat: Chat): string => {
   if (!userStore.userId) {
@@ -217,11 +188,7 @@ const onPinnedDragOver = (chatId: string) => {
             :last-message="normalizeLastMessage(chat.lastMessage)"
             :date="chat.updatedAt ?? chat.lastMessage?.createdAt"
             :unread-count="unreadCounts[chat.id]"
-            :typing-users="
-              chat.id === chatStore.activeChatId
-                ? activeChatTypingUsers
-                : undefined
-            "
+            :typing-users="chatStore.getTypingUsers(chat.id)"
             :open-context-chat-id="openContextChatId"
             @context-open="openContextChatId = $event"
             @click="
@@ -259,11 +226,7 @@ const onPinnedDragOver = (chatId: string) => {
           :last-message="normalizeLastMessage(chat.lastMessage)"
           :date="chat.updatedAt ?? chat.lastMessage?.createdAt"
           :unread-count="unreadCounts[chat.id]"
-          :typing-users="
-            chat.id === chatStore.activeChatId
-              ? activeChatTypingUsers
-              : undefined
-          "
+          :typing-users="chatStore.getTypingUsers(chat.id)"
           :open-context-chat-id="openContextChatId"
           @context-open="openContextChatId = $event"
           @click="
